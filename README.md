@@ -10,7 +10,7 @@ Describe the site you want in plain English, and watch it get built — with a r
 - **Bring your own reference material** — attach an image, a text file, or a PDF to a message so a build can actually use it: a logo, brand notes, existing copy.
 - **A swappable design language** — generated sites follow a design reference from the `designs/` folder rather than defaulting to one generic template; drop in another file and point `ACTIVE_DESIGN_FILE` at it.
 - **Plain files, no lock-in** — every project lives as a normal folder under `generated-projects/`. Nothing is trapped in a database or a proprietary format.
-- **A real sidebar** — every project you've started is listed, renameable, and deletable, right from the UI.
+- **Project sidebar** — every project you've started is listed, renameable, and deletable, right from the UI.
 
 ## Quick start
 
@@ -56,7 +56,7 @@ The backend reads a few optional environment variables — none are required to 
 | `PORT` | `3000` | Backend port |
 | `GENERATED_PROJECTS_DIR` | `../generated-projects` | Where generated sites are written |
 | `DESIGNS_DIR` | `../designs` | Where design reference files live |
-| `ACTIVE_DESIGN_FILE` | `DESIGN-2.md` | Which file in `DESIGNS_DIR` new projects follow |
+| `ACTIVE_DESIGN_FILE` | `DESIGN.md` | Which file in `DESIGNS_DIR` new projects follow |
 
 ## Prompt examples
 

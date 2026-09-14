@@ -3,7 +3,7 @@ import { join, resolve } from 'path';
 
 /**
  * The `designs/` folder holds one or more design-system reference files
- * (see designs/DESIGN.md, designs/DESIGN-2.md) - groundwork for letting a
+ * (see designs/DESIGN.md, designs/DESIGN.md) - groundwork for letting a
  * user pick one later. For now, exactly one is "active" and gets read
  * fresh off disk on every prompt build (see buildAgentPrompt), so swapping
  * ACTIVE_DESIGN_FILE takes effect without restarting the backend.
@@ -13,7 +13,7 @@ export function getDesignsDir(): string {
 }
 
 export function getActiveDesignFile(): string {
-  return process.env.ACTIVE_DESIGN_FILE ?? 'DESIGN-2.md';
+  return process.env.ACTIVE_DESIGN_FILE ?? 'DESIGN.md';
 }
 
 /** Returns the active design guide's contents, or null if it's missing/
