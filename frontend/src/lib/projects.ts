@@ -9,6 +9,13 @@ export type AgentOutputEvent =
 
 export type TurnStatus = 'running' | 'completed' | 'failed' | 'cancelled';
 
+/** A reference file attached to a prompt - see TurnDetail. */
+export interface TurnAttachment {
+  name: string;
+  path: string;
+  mimeType: string;
+}
+
 /** One prompt submitted against a project, plus its replayed output. */
 export interface TurnDetail {
   turnId: string;
@@ -17,6 +24,7 @@ export interface TurnDetail {
   status: TurnStatus;
   finishedAt?: string;
   events: AgentOutputEvent[];
+  attachments?: TurnAttachment[];
 }
 
 export interface ProjectSummary {
@@ -57,18 +65,49 @@ export async function getProject(id: string): Promise<ProjectDetail> {
 
 /**
  * Starts a generation: pass `{ name }` to create a brand-new project, or
- * `{ projectId }` to send a follow-up prompt into an existing one.
+ * `{ projectId }` to send a follow-up prompt into an existing one. Always
+ * sent as multipart (even with no files) so the endpoint's shape stays
+ * uniform regardless of whether anything is attached.
  */
 export async function startGeneration(
   prompt: string,
   target: { name: string } | { projectId: string },
+  attachments: File[] = [],
 ): Promise<{ jobId: string; projectId: string }> {
+  const form = new FormData();
+  form.append('prompt', prompt);
+  for (const [key, value] of Object.entries(target)) {
+    form.append(key, value);
+  }
+  for (const file of attachments) {
+    form.append('files', file);
+  }
   const res = await fetch(`${API_BASE}/project-generator`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ prompt, ...target }),
+    body: form,
   });
   return parseOrThrow(res, 'Starting generation');
+}
+
+export async function renameProject(
+  id: string,
+  name: string,
+): Promise<ProjectSummary> {
+  const res = await fetch(`${API_BASE}/project-generator/projects/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name }),
+  });
+  return parseOrThrow(res, 'Renaming project');
+}
+
+export async function deleteProject(id: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/project-generator/projects/${id}`, {
+    method: 'DELETE',
+  });
+  if (!res.ok) {
+    throw new Error(`Failed to delete project (${res.status})`);
+  }
 }
 
 export async function cancelGeneration(jobId: string): Promise<void> {

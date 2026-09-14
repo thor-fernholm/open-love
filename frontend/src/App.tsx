@@ -50,7 +50,7 @@ function App() {
           <Route
             path="/"
             element={
-              <ProjectPage key="new" onProjectCreated={refreshProjectList} />
+              <ProjectPage key="new" onProjectsChanged={refreshProjectList} />
             }
           />
           <Route
@@ -58,7 +58,7 @@ function App() {
             element={
               <ProjectPage
                 key={location.pathname}
-                onProjectCreated={refreshProjectList}
+                onProjectsChanged={refreshProjectList}
               />
             }
           />

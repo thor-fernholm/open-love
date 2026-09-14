@@ -1,17 +1,18 @@
 import { useEffect, useState } from 'react';
-import { NavLink, useNavigate } from 'react-router-dom';
-import { listProjects, type ProjectSummary } from '../lib/projects';
+import { NavLink, useLocation, useNavigate } from 'react-router-dom';
+import { deleteProject, listProjects, type ProjectSummary } from '../lib/projects';
 
 interface SidebarProps {
   collapsed: boolean;
   onToggleCollapsed: () => void;
-  /** Bump to force a re-fetch, e.g. right after a new project is created. */
+  /** Bump to force a re-fetch, e.g. right after a project is created or renamed. */
   refreshKey: number;
 }
 
 export function Sidebar({ collapsed, onToggleCollapsed, refreshKey }: SidebarProps) {
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const navigate = useNavigate();
+  const location = useLocation();
 
   useEffect(() => {
     let cancelled = false;
@@ -27,6 +28,24 @@ export function Sidebar({ collapsed, onToggleCollapsed, refreshKey }: SidebarPro
       cancelled = true;
     };
   }, [refreshKey]);
+
+  async function handleDelete(e: React.MouseEvent, project: ProjectSummary) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!window.confirm(`Delete "${project.name}"? This can't be undone.`)) {
+      return;
+    }
+    try {
+      await deleteProject(project.id);
+      setProjects((prev) => prev.filter((p) => p.id !== project.id));
+      if (location.pathname.startsWith(`/projects/${project.id}`)) {
+        navigate('/');
+      }
+    } catch {
+      // Best-effort - the list just won't reflect it; not the primary
+      // error surface for this destructive action.
+    }
+  }
 
   if (collapsed) {
     return (
@@ -77,12 +96,12 @@ export function Sidebar({ collapsed, onToggleCollapsed, refreshKey }: SidebarPro
         ) : (
           <ul className="flex flex-col gap-0.5">
             {projects.map((project) => (
-              <li key={project.id}>
+              <li key={project.id} className="group flex items-center">
                 <NavLink
                   to={`/projects/${project.id}`}
                   title={project.name}
                   className={({ isActive }) =>
-                    `block truncate rounded-md px-3 py-2 text-sm transition ${
+                    `block flex-1 truncate rounded-md px-3 py-2 text-sm transition ${
                       isActive
                         ? 'bg-surface-dark-elevated text-on-dark'
                         : 'text-on-dark-soft hover:bg-surface-dark-elevated hover:text-on-dark'
@@ -91,6 +110,15 @@ export function Sidebar({ collapsed, onToggleCollapsed, refreshKey }: SidebarPro
                 >
                   {project.name}
                 </NavLink>
+                <button
+                  type="button"
+                  onClick={(e) => handleDelete(e, project)}
+                  aria-label={`Delete ${project.name}`}
+                  title="Delete project"
+                  className="mr-1 flex-shrink-0 rounded p-1.5 text-on-dark-soft opacity-0 transition group-hover:opacity-100 hover:text-error"
+                >
+                  <TrashIcon />
+                </button>
               </li>
             ))}
           </ul>
@@ -111,6 +139,24 @@ function ChevronIcon({ direction }: { direction: 'left' | 'right' }) {
     >
       <path
         d={direction === 'left' ? 'M12.5 4.5 7 10l5.5 5.5' : 'M7.5 4.5 13 10l-5.5 5.5'}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function TrashIcon() {
+  return (
+    <svg
+      viewBox="0 0 20 20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.5}
+      className="h-4 w-4"
+    >
+      <path
+        d="M4.5 5.5h11M8 5.5V4a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v1.5M6 5.5v9.5a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V5.5"
         strokeLinecap="round"
         strokeLinejoin="round"
       />

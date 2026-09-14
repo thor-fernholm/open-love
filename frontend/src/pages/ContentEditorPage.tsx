@@ -1,5 +1,6 @@
-import { useEffect, useState, type ChangeEvent } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
+import { FileButton } from '../components/FileButton';
 import {
   getContent,
   resolveContentAssetUrl,
@@ -31,9 +32,8 @@ function FieldInput({ field, value, onChange, projectId }: FieldInputProps) {
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
 
-  async function handleFileChange(e: ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    e.target.value = '';
+  async function handleFiles(files: File[]) {
+    const file = files[0];
     if (!file) return;
     setUploading(true);
     setUploadError(null);
@@ -80,14 +80,9 @@ function FieldInput({ field, value, onChange, projectId }: FieldInputProps) {
           className={inputClass}
         />
         <div className="flex items-center gap-2">
-          <input
-            type="file"
-            accept="image/*"
-            onChange={handleFileChange}
-            disabled={uploading}
-            className="text-xs text-muted"
-          />
-          {uploading && <span className="text-xs text-muted">Uploading…</span>}
+          <FileButton accept="image/*" disabled={uploading} onFiles={handleFiles}>
+            <UploadIcon /> {uploading ? 'Uploading…' : 'Upload image'}
+          </FileButton>
         </div>
         {uploadError && <span className="text-xs text-error">{uploadError}</span>}
         {value && (
@@ -310,7 +305,7 @@ export function ContentEditorPage() {
         </div>
       </header>
 
-      <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-6 overflow-y-auto px-4 py-6">
+      <div className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-6 overflow-y-auto px-6 py-6">
         {loadError && (
           <p className="rounded-md bg-error/10 px-3 py-2 text-sm text-error">
             {loadError}
@@ -320,14 +315,16 @@ export function ContentEditorPage() {
         {loading ? (
           <p className="text-sm text-muted">Loading content…</p>
         ) : content && content.collections.length > 0 ? (
-          content.collections.map((schema) => (
-            <CollectionEditor
-              key={schema.name}
-              projectId={id}
-              schema={schema}
-              initialData={content.data[schema.name]}
-            />
-          ))
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+            {content.collections.map((schema) => (
+              <CollectionEditor
+                key={schema.name}
+                projectId={id}
+                schema={schema}
+                initialData={content.data[schema.name]}
+              />
+            ))}
+          </div>
         ) : (
           <p className="text-sm text-muted">
             This project doesn't have editable content - it's a static site
@@ -336,5 +333,23 @@ export function ContentEditorPage() {
         )}
       </div>
     </div>
+  );
+}
+
+function UploadIcon() {
+  return (
+    <svg
+      viewBox="0 0 20 20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.6}
+      className="h-4 w-4"
+    >
+      <path
+        d="M10 12.5V4M6.5 7.5 10 4l3.5 3.5M4.5 14.5v1a1 1 0 0 0 1 1h9a1 1 0 0 0 1-1v-1"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
   );
 }

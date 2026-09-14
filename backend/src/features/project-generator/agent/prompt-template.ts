@@ -1,4 +1,5 @@
 import { readActiveDesignGuide } from './design-guide';
+import type { TurnAttachment } from '../project.types';
 
 /**
  * Every new project starts from a blank folder (see
@@ -49,11 +50,25 @@ ${guide}
 --- End of design system ---`;
 }
 
-export function buildAgentPrompt(userPrompt: string): string {
+function buildAttachmentsSection(attachments: TurnAttachment[]): string | null {
+  if (attachments.length === 0) return null;
+  const list = attachments
+    .map((a) => `- ${a.path} (originally "${a.name}", ${a.mimeType})`)
+    .join('\n');
+  return `The user attached these reference files - read them from these paths (relative to this directory) if they're useful for the request below. If a format isn't something you can read (e.g. some PDFs), just skip it rather than guessing at its content:\n${list}`;
+}
+
+export function buildAgentPrompt(
+  userPrompt: string,
+  attachments: TurnAttachment[] = [],
+): string {
   return [
     INSTRUCTIONS_HEAD,
     buildDesignSection(),
     CONTENT_CONVENTION,
+    buildAttachmentsSection(attachments),
     `User's request:\n${userPrompt}`,
-  ].join('\n\n');
+  ]
+    .filter((section): section is string => Boolean(section))
+    .join('\n\n');
 }

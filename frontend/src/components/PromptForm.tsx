@@ -1,9 +1,14 @@
+import { FileButton } from './FileButton';
+
 export type GenerationStatus =
   | 'idle'
   | 'running'
   | 'completed'
   | 'error'
   | 'cancelled';
+
+const ATTACHMENT_ACCEPT = 'image/*,.pdf,.txt,.md,.csv,.json';
+const MAX_ATTACHMENTS = 5;
 
 interface PromptFormProps {
   /** "new" shows the project-name field; "existing" sends follow-ups. */
@@ -13,6 +18,8 @@ interface PromptFormProps {
   prompt: string;
   status: GenerationStatus;
   onPromptChange: (value: string) => void;
+  attachments: File[];
+  onAttachmentsChange: (files: File[]) => void;
   onGenerate: () => void;
   onCancel: () => void;
 }
@@ -24,6 +31,8 @@ export function PromptForm({
   prompt,
   status,
   onPromptChange,
+  attachments,
+  onAttachmentsChange,
   onGenerate,
   onCancel,
 }: PromptFormProps) {
@@ -32,6 +41,14 @@ export function PromptForm({
     !running &&
     prompt.trim().length > 0 &&
     (mode === 'existing' || name.trim().length > 0);
+
+  function addFiles(files: File[]) {
+    onAttachmentsChange([...attachments, ...files].slice(0, MAX_ATTACHMENTS));
+  }
+
+  function removeFile(index: number) {
+    onAttachmentsChange(attachments.filter((_, i) => i !== index));
+  }
 
   return (
     <div className="flex flex-col gap-3 rounded-lg border border-hairline bg-canvas p-4 shadow-sm">
@@ -70,6 +87,33 @@ export function PromptForm({
         />
       </div>
 
+      <div className="flex flex-wrap items-center gap-2">
+        <FileButton
+          accept={ATTACHMENT_ACCEPT}
+          multiple
+          disabled={running || attachments.length >= MAX_ATTACHMENTS}
+          onFiles={addFiles}
+        >
+          <PaperclipIcon /> Attach
+        </FileButton>
+        {attachments.map((file, i) => (
+          <span
+            key={`${file.name}-${i}`}
+            className="inline-flex items-center gap-1.5 rounded-full bg-surface-soft px-2.5 py-1 text-xs text-ink"
+          >
+            <span className="max-w-[10rem] truncate">{file.name}</span>
+            <button
+              type="button"
+              onClick={() => removeFile(i)}
+              aria-label={`Remove ${file.name}`}
+              className="text-muted hover:text-error"
+            >
+              ×
+            </button>
+          </span>
+        ))}
+      </div>
+
       <div className="flex gap-3">
         <button
           type="button"
@@ -90,5 +134,23 @@ export function PromptForm({
         )}
       </div>
     </div>
+  );
+}
+
+function PaperclipIcon() {
+  return (
+    <svg
+      viewBox="0 0 20 20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.6}
+      className="h-4 w-4"
+    >
+      <path
+        d="M13.5 6.5 8 12a2 2 0 1 0 2.83 2.83l5-5a3.5 3.5 0 0 0-4.95-4.95l-5.5 5.5a5 5 0 0 0 7.07 7.07"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
   );
 }

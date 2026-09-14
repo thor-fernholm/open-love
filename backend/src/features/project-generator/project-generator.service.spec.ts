@@ -193,4 +193,113 @@ describe('ProjectGeneratorService', () => {
       NotFoundException,
     );
   });
+
+  it('renames a project', () => {
+    const { projectId } = service.start({ prompt: 'a site', name: 'Old Name' });
+    const updated = service.renameProject(projectId, 'New Name');
+    expect(updated.name).toBe('New Name');
+    expect(service.getProject(projectId).name).toBe('New Name');
+  });
+
+  it('rejects an empty name on rename, and an unknown project id', () => {
+    const { projectId } = service.start({ prompt: 'a site', name: 'Name' });
+    expect(() => service.renameProject(projectId, '   ')).toThrow(
+      BadRequestException,
+    );
+    expect(() => service.renameProject('does-not-exist', 'X')).toThrow(
+      NotFoundException,
+    );
+  });
+
+  it('deletes a project, killing any job still running against it first', () => {
+    const { projectId } = service.start({ prompt: 'a site', name: 'Name' });
+    const projectPath = getProjectDir(projectId);
+    expect(existsSync(projectPath)).toBe(true);
+
+    service.deleteProject(projectId);
+
+    expect(agent.lastHandle.kill).toHaveBeenCalledTimes(1);
+    expect(existsSync(projectPath)).toBe(false);
+    expect(() => service.getProject(projectId)).toThrow(NotFoundException);
+  });
+
+  it('throws NotFoundException deleting an unknown project', () => {
+    expect(() => service.deleteProject('does-not-exist')).toThrow(
+      NotFoundException,
+    );
+  });
+
+  it('does not let in-flight output events recreate a deleted project folder', () => {
+    const { projectId } = service.start({ prompt: 'a site', name: 'Name' });
+    const projectPath = getProjectDir(projectId);
+
+    service.deleteProject(projectId);
+    expect(existsSync(projectPath)).toBe(false);
+
+    // The underlying process can still emit buffered output for a moment
+    // after kill() - simulate that arriving after deletion.
+    agent.lastHandle.subject.next({ type: 'stdout', data: 'late output' });
+    agent.lastHandle.subject.next({ type: 'exit', code: 0 });
+    agent.lastHandle.subject.complete();
+
+    expect(existsSync(projectPath)).toBe(false);
+  });
+
+  function fakeFile(overrides: Partial<Express.Multer.File>): Express.Multer.File {
+    return {
+      originalname: 'file.txt',
+      mimetype: 'text/plain',
+      size: 10,
+      buffer: Buffer.from('hello'),
+      fieldname: 'files',
+      encoding: '7bit',
+      ...overrides,
+    } as Express.Multer.File;
+  }
+
+  it('saves attached files under the turn and returns them on the project', () => {
+    const files = [
+      fakeFile({ originalname: 'brand.txt', mimetype: 'text/plain' }),
+      fakeFile({ originalname: 'logo.png', mimetype: 'image/png' }),
+    ];
+    const { jobId, projectId } = service.start(
+      { prompt: 'use these files', name: 'With Attachments' },
+      files,
+    );
+
+    const turn = service.getProject(projectId).turns[0];
+    expect(turn.attachments).toHaveLength(2);
+    expect(turn.attachments?.[0]).toMatchObject({ name: 'brand.txt' });
+    expect(turn.attachments?.[0].path).toContain(jobId);
+
+    const savedPath = join(getProjectDir(projectId), turn.attachments![0].path);
+    expect(existsSync(savedPath)).toBe(true);
+  });
+
+  it('rejects an attachment with a disallowed extension', () => {
+    expect(() =>
+      service.start(
+        { prompt: 'x', name: 'Name' },
+        [fakeFile({ originalname: 'payload.exe' })],
+      ),
+    ).toThrow(BadRequestException);
+  });
+
+  it('rejects an oversized attachment', () => {
+    expect(() =>
+      service.start(
+        { prompt: 'x', name: 'Name' },
+        [fakeFile({ originalname: 'big.txt', size: 11 * 1024 * 1024 })],
+      ),
+    ).toThrow(BadRequestException);
+  });
+
+  it('rejects more than the max number of attachments', () => {
+    const files = Array.from({ length: 6 }, (_, i) =>
+      fakeFile({ originalname: `f${i}.txt` }),
+    );
+    expect(() => service.start({ prompt: 'x', name: 'Name' }, files)).toThrow(
+      BadRequestException,
+    );
+  });
 });

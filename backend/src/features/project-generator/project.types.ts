@@ -2,6 +2,15 @@ import { AgentOutputEvent } from './agent/agent-service.interface';
 
 export type TurnStatus = 'running' | 'completed' | 'failed' | 'cancelled';
 
+/** A reference file the user attached to a prompt, saved under that turn's
+ *  own folder so the agent can read it - see ProjectGeneratorService.start. */
+export interface TurnAttachment {
+  name: string;
+  /** Relative to the project root, e.g. ".openlove/attachments/<turnId>/logo.png". */
+  path: string;
+  mimeType: string;
+}
+
 /**
  * One prompt submitted against a project ("turn"). `turnId` is the job id
  * that ran it. Kept separate from the raw event log (see TurnDetail) so a
@@ -14,6 +23,7 @@ export interface TurnRecord {
   startedAt: string;
   status: TurnStatus;
   finishedAt?: string;
+  attachments?: TurnAttachment[];
 }
 
 /** A turn plus its replayed raw output - what today's terminal view renders. */

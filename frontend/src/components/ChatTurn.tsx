@@ -46,8 +46,23 @@ export function ChatTurn({ turn }: { turn: TurnDetail }) {
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="max-w-[85%] self-end rounded-lg bg-primary px-4 py-2 text-sm text-on-primary shadow-sm">
-        {turn.prompt}
+      <div className="flex max-w-[85%] flex-col gap-1.5 self-end">
+        <div className="rounded-lg bg-primary px-4 py-2 text-sm text-on-primary shadow-sm">
+          {turn.prompt}
+        </div>
+        {turn.attachments && turn.attachments.length > 0 && (
+          <div className="flex flex-wrap justify-end gap-1.5">
+            {turn.attachments.map((attachment) => (
+              <span
+                key={attachment.name}
+                className="max-w-[10rem] truncate rounded-full bg-surface-soft px-2.5 py-1 text-xs text-muted"
+                title={attachment.name}
+              >
+                📎 {attachment.name}
+              </span>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="flex max-w-[85%] flex-col gap-2 self-start">

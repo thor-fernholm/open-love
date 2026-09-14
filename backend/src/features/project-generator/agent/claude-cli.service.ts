@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { spawnSync } from 'child_process';
 import spawn from 'cross-spawn';
 import { Subject } from 'rxjs';
 import {
@@ -64,9 +65,21 @@ export class ClaudeCliService implements IAgentService {
     return {
       output$: output$.asObservable(),
       kill: () => {
-        // On Windows, Node ignores the signal and force-terminates the
-        // process outright (equivalent to SIGKILL) - acceptable here.
-        child.kill('SIGINT');
+        if (process.platform === 'win32' && child.pid) {
+          // A plain child.kill() on Windows only terminates cross-spawn's
+          // immediate child - since `claude` is launched via a shell/.cmd
+          // wrapper there, the actual worker process underneath can be
+          // orphaned and keep running (and keep the project directory
+          // locked as its cwd) indefinitely. taskkill's /T kills the
+          // whole process tree, not just the wrapper - and this must be
+          // spawnSync, not async spawn: callers that immediately try to
+          // delete the project directory right after kill() need the
+          // process tree to actually be gone by the time kill() returns,
+          // not just "asked to die at some point soon".
+          spawnSync('taskkill', ['/pid', String(child.pid), '/T', '/F']);
+        } else {
+          child.kill('SIGINT');
+        }
       },
     };
   }

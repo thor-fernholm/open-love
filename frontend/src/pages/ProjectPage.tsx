@@ -6,6 +6,7 @@ import {
   cancelGeneration,
   getProject,
   previewUrl,
+  renameProject,
   startGeneration,
   streamUrl,
   type AgentOutputEvent,
@@ -29,9 +30,9 @@ function statusFromTurns(turns: TurnDetail[]): GenerationStatus {
 }
 
 interface ProjectPageProps {
-  /** Called right after a brand-new project is created, so the sidebar
+  /** Called right after a project is created or renamed, so the sidebar
    *  refetches its list. */
-  onProjectCreated: () => void;
+  onProjectsChanged: () => void;
 }
 
 /**
@@ -40,19 +41,23 @@ interface ProjectPageProps {
  * streaming logic isn't duplicated between the two. History is one entry
  * per turn (see ChatTurn), not a single flattened transcript.
  */
-export function ProjectPage({ onProjectCreated }: ProjectPageProps) {
+export function ProjectPage({ onProjectsChanged }: ProjectPageProps) {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
 
   const [name, setName] = useState('');
   const [projectName, setProjectName] = useState<string | null>(null);
   const [prompt, setPrompt] = useState('');
+  const [attachments, setAttachments] = useState<File[]>([]);
   const [jobId, setJobId] = useState<string | null>(null);
   const [turns, setTurns] = useState<TurnDetail[]>([]);
   const [loading, setLoading] = useState(Boolean(id));
   const [starting, setStarting] = useState(false);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [editingName, setEditingName] = useState(false);
+  const [nameDraft, setNameDraft] = useState('');
+  const [renaming, setRenaming] = useState(false);
   const eventSourceRef = useRef<EventSource | null>(null);
   const historyRef = useRef<HTMLDivElement>(null);
 
@@ -167,10 +172,12 @@ export function ProjectPage({ onProjectCreated }: ProjectPageProps) {
       setStarting(true);
       setError(null);
       try {
-        const { projectId } = await startGeneration(trimmedPrompt, {
-          name: trimmedName,
-        });
-        onProjectCreated();
+        const { projectId } = await startGeneration(
+          trimmedPrompt,
+          { name: trimmedName },
+          attachments,
+        );
+        onProjectsChanged();
         navigate(`/projects/${projectId}`);
       } catch (err) {
         setError((err as Error).message);
@@ -183,9 +190,11 @@ export function ProjectPage({ onProjectCreated }: ProjectPageProps) {
     setSending(true);
     setError(null);
     try {
-      const { jobId: newJobId } = await startGeneration(trimmedPrompt, {
-        projectId: id,
-      });
+      const { jobId: newJobId } = await startGeneration(
+        trimmedPrompt,
+        { projectId: id },
+        attachments,
+      );
       setPrompt('');
       setJobId(newJobId);
       setTurns((prev) => [
@@ -196,13 +205,41 @@ export function ProjectPage({ onProjectCreated }: ProjectPageProps) {
           startedAt: new Date().toISOString(),
           status: 'running',
           events: [],
+          attachments: attachments.map((file) => ({
+            name: file.name,
+            path: '',
+            mimeType: file.type,
+          })),
         },
       ]);
+      setAttachments([]);
       openStream(newJobId);
     } catch (err) {
       setError((err as Error).message);
     } finally {
       setSending(false);
+    }
+  }
+
+  function startEditingName() {
+    if (!projectName) return;
+    setNameDraft(projectName);
+    setEditingName(true);
+  }
+
+  async function commitRename() {
+    const trimmed = nameDraft.trim();
+    setEditingName(false);
+    if (!id || !trimmed || trimmed === projectName) return;
+    setRenaming(true);
+    try {
+      const updated = await renameProject(id, trimmed);
+      setProjectName(updated.name);
+      onProjectsChanged();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setRenaming(false);
     }
   }
 
@@ -230,9 +267,30 @@ export function ProjectPage({ onProjectCreated }: ProjectPageProps) {
     <div className="flex h-full flex-col">
       <header className="flex items-center justify-between gap-4 border-b border-hairline px-6 py-4">
         <div className="flex min-w-0 flex-col gap-1">
-          <h1 className="truncate font-display text-2xl tracking-tight text-ink">
-            {mode === 'existing' ? projectName ?? 'Loading…' : 'New project'}
-          </h1>
+          {mode === 'existing' && editingName ? (
+            <input
+              autoFocus
+              value={nameDraft}
+              onChange={(e) => setNameDraft(e.target.value)}
+              onBlur={commitRename}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') commitRename();
+                if (e.key === 'Escape') setEditingName(false);
+              }}
+              disabled={renaming}
+              className="w-full max-w-xs rounded-md border border-hairline bg-canvas px-2 py-0.5 font-display text-2xl tracking-tight text-ink outline-none focus:border-primary"
+            />
+          ) : (
+            <h1
+              onClick={mode === 'existing' ? startEditingName : undefined}
+              title={mode === 'existing' ? 'Click to rename' : undefined}
+              className={`truncate font-display text-2xl tracking-tight text-ink ${
+                mode === 'existing' ? 'cursor-pointer hover:opacity-70' : ''
+              }`}
+            >
+              {mode === 'existing' ? projectName ?? 'Loading…' : 'New project'}
+            </h1>
+          )}
           <span
             className={`inline-block w-fit rounded-full px-2 py-0.5 text-xs font-medium capitalize ${STATUS_STYLES[status]}`}
           >
@@ -264,7 +322,7 @@ export function ProjectPage({ onProjectCreated }: ProjectPageProps) {
 
       <div
         ref={historyRef}
-        className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-4 overflow-y-auto px-4 py-6"
+        className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-4 overflow-y-auto px-4 py-6"
       >
         {error && (
           <p className="rounded-md bg-error/10 px-3 py-2 text-sm text-error">
@@ -285,7 +343,7 @@ export function ProjectPage({ onProjectCreated }: ProjectPageProps) {
         )}
       </div>
 
-      <div className="mx-auto w-full max-w-2xl flex-shrink-0 px-4 pb-6">
+      <div className="mx-auto w-full max-w-3xl flex-shrink-0 px-4 pb-6">
         <PromptForm
           mode={mode}
           name={name}
@@ -293,6 +351,8 @@ export function ProjectPage({ onProjectCreated }: ProjectPageProps) {
           prompt={prompt}
           status={status}
           onPromptChange={setPrompt}
+          attachments={attachments}
+          onAttachmentsChange={setAttachments}
           onGenerate={handleGenerate}
           onCancel={handleCancel}
         />
