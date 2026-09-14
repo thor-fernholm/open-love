@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { AgentOutputEvent, TurnDetail, TurnStatus } from '../lib/projects';
+import { CLAUDE_MODELS } from '../lib/settings';
 import { GeneratingIndicator } from './GeneratingIndicator';
 import { TerminalWindow, type TerminalLine } from './TerminalWindow';
 
@@ -32,6 +33,18 @@ const STATUS_DOT: Record<TurnStatus, string> = {
   failed: 'bg-error',
   cancelled: 'bg-muted',
 };
+
+/** "Claude Code · Sonnet 5" / "Ollama · gemma4:latest" - matches the
+ *  provider/model grouping in ModelSelect, so it's clear which model
+ *  actually produced this turn. */
+function describeModel(turn: TurnDetail): string {
+  if (turn.provider === 'ollama') {
+    return turn.model ? `Ollama · ${turn.model}` : 'Ollama';
+  }
+  if (!turn.model) return 'Claude Code';
+  const label = CLAUDE_MODELS.find((m) => m.value === turn.model)?.label ?? turn.model;
+  return `Claude Code · ${label}`;
+}
 
 /**
  * One exchange in the project's chat history: the prompt as a user bubble,
@@ -67,11 +80,25 @@ export function ChatTurn({ turn }: { turn: TurnDetail }) {
 
       <div className="flex max-w-[85%] flex-col gap-2 self-start">
         {running ? (
-          <GeneratingIndicator startedAt={turn.startedAt} />
+          <div className="flex items-center gap-2">
+            <GeneratingIndicator startedAt={turn.startedAt} />
+            {lines.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setExpanded((e) => !e)}
+                className="text-xs text-primary hover:underline"
+              >
+                {expanded ? 'Hide details' : 'Show details'}
+              </button>
+            )}
+          </div>
         ) : (
           <div className="flex items-center gap-2 text-sm">
             <span className={`h-2 w-2 rounded-full ${STATUS_DOT[turn.status]}`} />
             <span className="text-muted">{STATUS_LABEL[turn.status]}</span>
+            <span className="rounded-full bg-surface-soft px-2 py-0.5 text-xs text-muted">
+              {describeModel(turn)}
+            </span>
             {lines.length > 0 && (
               <button
                 type="button"
@@ -83,9 +110,9 @@ export function ChatTurn({ turn }: { turn: TurnDetail }) {
             )}
           </div>
         )}
-
-        {(running || expanded) && lines.length > 0 && <TerminalWindow lines={lines} />}
       </div>
+
+      {expanded && lines.length > 0 && <TerminalWindow lines={lines} />}
     </div>
   );
 }

@@ -6,3 +6,6 @@ build/
 .env
 generated-projects/
 .claude/
+
+# Local machine agent-provider default (features/settings) - not shared config.
+openlove-settings.json

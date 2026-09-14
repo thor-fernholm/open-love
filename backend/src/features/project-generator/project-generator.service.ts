@@ -1,20 +1,15 @@
 import {
   BadRequestException,
-  Inject,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { existsSync, mkdirSync, rmSync, statSync, writeFileSync } from 'fs';
-import { extname, join, resolve, sep } from 'path';
+import { extname, join } from 'path';
 import { Observable, Subject } from 'rxjs';
-import {
-  AGENT_SERVICE,
-  AgentOutputEvent,
-  AgentProcessHandle,
-} from './agent/agent-service.interface';
-import type { IAgentService } from './agent/agent-service.interface';
-import { buildAgentPrompt } from './agent/prompt-template';
+import { AgentServiceRegistry } from './agent/agent-registry.service';
+import { AgentOutputEvent, AgentProcessHandle } from './agent/agent-service.interface';
+import { SettingsService } from '../settings/settings.service';
 import { GenerateProjectDto } from './dto/generate-project.dto';
 import {
   appendTurn,
@@ -24,11 +19,17 @@ import {
   listProjectIds,
   readAllTurns,
   readMeta,
+  resolveWithinDir,
   statBirthtime,
   updateTurnStatus,
   writeMeta,
 } from './project-store';
-import { ProjectDetail, ProjectSummary, TurnAttachment } from './project.types';
+import {
+  AgentSelection,
+  ProjectDetail,
+  ProjectSummary,
+  TurnAttachment,
+} from './project.types';
 
 const ATTACHMENT_EXTENSIONS = new Set([
   '.png',
@@ -76,7 +77,8 @@ export class ProjectGeneratorService {
   private readonly jobs = new Map<string, Job>();
 
   constructor(
-    @Inject(AGENT_SERVICE) private readonly agentService: IAgentService,
+    private readonly agentRegistry: AgentServiceRegistry,
+    private readonly settings: SettingsService,
   ) {}
 
   start(
@@ -87,6 +89,7 @@ export class ProjectGeneratorService {
       ? this.resolveExistingProject(dto.projectId)
       : this.createProject(dto.name);
 
+    const selection = this.resolveSelection(dto);
     const jobId = randomUUID();
     const attachments = this.saveAttachments(projectId, jobId, files);
     appendTurn(projectId, {
@@ -95,12 +98,16 @@ export class ProjectGeneratorService {
       startedAt: new Date().toISOString(),
       status: 'running',
       attachments: attachments.length > 0 ? attachments : undefined,
+      provider: selection.provider,
+      model: selection.model,
     });
 
-    const handle = this.agentService.run(
-      buildAgentPrompt(dto.prompt, attachments),
-      projectPath,
-    );
+    const handle = this.agentRegistry.get(selection.provider).run({
+      userPrompt: dto.prompt,
+      cwd: projectPath,
+      model: selection.model,
+      attachments,
+    });
     const output$ = new Subject<AgentOutputEvent>();
     const job: Job = {
       id: jobId,
@@ -215,7 +222,7 @@ export class ProjectGeneratorService {
    */
   resolvePreviewFile(projectId: string, subPath: string): string {
     assertSafeId(projectId);
-    const root = resolve(getProjectDir(projectId));
+    const root = getProjectDir(projectId);
     if (!existsSync(root)) {
       throw new NotFoundException(`No project found with id ${projectId}`);
     }
@@ -227,10 +234,7 @@ export class ProjectGeneratorService {
       throw new BadRequestException('Invalid preview path');
     }
 
-    let target = resolve(root, decoded);
-    if (target !== root && !target.startsWith(root + sep)) {
-      throw new BadRequestException('Invalid preview path');
-    }
+    let target = resolveWithinDir(root, decoded);
     if (existsSync(target) && statSync(target).isDirectory()) {
       target = join(target, 'index.html');
     }
@@ -262,6 +266,23 @@ export class ProjectGeneratorService {
       createdAt: new Date().toISOString(),
     });
     return { projectId, projectPath };
+  }
+
+  /** Which agent builds this turn: an explicit per-request override, else
+   *  (for a follow-up) whatever the project's most recent turn used, else
+   *  the persisted global default - see features/settings. */
+  private resolveSelection(dto: GenerateProjectDto): AgentSelection {
+    if (dto.provider) {
+      return { provider: dto.provider, model: dto.model };
+    }
+    if (dto.projectId) {
+      const turns = readAllTurns(dto.projectId);
+      const last = turns[turns.length - 1];
+      if (last) {
+        return { provider: last.provider, model: last.model };
+      }
+    }
+    return this.settings.getDefault();
   }
 
   private resolveExistingProject(projectId: string): {

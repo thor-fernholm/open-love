@@ -8,7 +8,7 @@ import {
   statSync,
   writeFileSync,
 } from 'fs';
-import { join, resolve } from 'path';
+import { join, resolve, sep } from 'path';
 import { AgentOutputEvent } from './agent/agent-service.interface';
 import { ProjectMeta, TurnDetail, TurnRecord, TurnStatus } from './project.types';
 
@@ -45,6 +45,23 @@ export function assertSafeId(id: string): void {
 
 export function getProjectDir(id: string): string {
   return resolve(getGeneratedProjectsRoot(), id);
+}
+
+/**
+ * Resolves `relativePath` against `root`, rejecting anything that would
+ * escape it (`..` segments, absolute paths, etc.) - the one traversal
+ * check shared by the preview server, the agent's file tools, and
+ * anywhere else that turns a model- or user-supplied path into a real
+ * filesystem path. Throws BadRequestException on escape, exactly like
+ * assertSafeId does for ids.
+ */
+export function resolveWithinDir(root: string, relativePath: string): string {
+  const resolvedRoot = resolve(root);
+  const target = resolve(resolvedRoot, relativePath);
+  if (target !== resolvedRoot && !target.startsWith(resolvedRoot + sep)) {
+    throw new BadRequestException('Path escapes the project directory');
+  }
+  return target;
 }
 
 function getMetaDir(id: string): string {

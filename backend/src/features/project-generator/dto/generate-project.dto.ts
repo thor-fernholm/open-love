@@ -1,4 +1,4 @@
-import { IsNotEmpty, IsOptional, IsString, Matches, MaxLength } from 'class-validator';
+import { IsIn, IsNotEmpty, IsOptional, IsString, Matches, MaxLength } from 'class-validator';
 
 export class GenerateProjectDto {
   @IsString()
@@ -29,4 +29,19 @@ export class GenerateProjectDto {
     message: 'projectId must be an id previously returned by this API',
   })
   projectId?: string;
+
+  /**
+   * Per-message override of which agent builds this turn. Omitted = fall
+   * back to the project's most recent turn, or the persisted global
+   * default (see features/settings) if there isn't one yet.
+   */
+  @IsOptional()
+  @IsIn(['claude', 'ollama'])
+  provider?: 'claude' | 'ollama';
+
+  /** Required alongside provider: 'ollama' (which local model); ignored otherwise. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  model?: string;
 }

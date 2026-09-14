@@ -7,17 +7,19 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { getProjectDir } from './project-store';
 import {
-  AGENT_SERVICE,
   AgentOutputEvent,
   AgentProcessHandle,
   IAgentService,
 } from './agent/agent-service.interface';
+import { AgentServiceRegistry } from './agent/agent-registry.service';
+import { SettingsService } from '../settings/settings.service';
 import { ProjectGeneratorService } from './project-generator.service';
 
 /**
  * A fake IAgentService strategy - demonstrates that ProjectGeneratorService
- * depends only on the IAgentService contract, so the real ClaudeCliService
- * can be swapped out in tests without changing any orchestration code.
+ * depends only on the IAgentService contract, so a real strategy
+ * (ClaudeCliService, SdkAgentService) can be swapped out in tests without
+ * changing any orchestration code.
  */
 class FakeAgentService implements IAgentService {
   public lastHandle!: { subject: Subject<AgentOutputEvent>; kill: jest.Mock };
@@ -44,10 +46,16 @@ describe('ProjectGeneratorService', () => {
     process.env.GENERATED_PROJECTS_DIR = testDir;
 
     agent = new FakeAgentService();
+    const registry = { get: () => agent } as unknown as AgentServiceRegistry;
+    const settings = {
+      getDefault: () => ({ provider: 'claude' as const }),
+    } as unknown as SettingsService;
+
     const moduleRef = await Test.createTestingModule({
       providers: [
         ProjectGeneratorService,
-        { provide: AGENT_SERVICE, useValue: agent },
+        { provide: AgentServiceRegistry, useValue: registry },
+        { provide: SettingsService, useValue: settings },
       ],
     }).compile();
 
@@ -121,6 +129,43 @@ describe('ProjectGeneratorService', () => {
     const followUp = service.start({ prompt: 'add dark mode', projectId });
     expect(followUp.projectId).toBe(projectId);
     expect(service.getProject(projectId).turns).toHaveLength(2);
+  });
+
+  it('defaults a new project to the persisted global provider selection', () => {
+    const { projectId } = service.start({ prompt: 'a todo app', name: 'Todo App' });
+    expect(service.getProject(projectId).turns[0]).toMatchObject({
+      provider: 'claude',
+    });
+  });
+
+  it('honors an explicit per-request provider/model override', () => {
+    const { projectId } = service.start({
+      prompt: 'a todo app',
+      name: 'Todo App',
+      provider: 'ollama',
+      model: 'gemma3:4b',
+    });
+    expect(service.getProject(projectId).turns[0]).toMatchObject({
+      provider: 'ollama',
+      model: 'gemma3:4b',
+    });
+  });
+
+  it('continues a follow-up with whatever provider/model built the last turn', () => {
+    const { projectId } = service.start({
+      prompt: 'a todo app',
+      name: 'Todo App',
+      provider: 'ollama',
+      model: 'gemma3:4b',
+    });
+    agent.lastHandle.subject.next({ type: 'exit', code: 0 });
+    agent.lastHandle.subject.complete();
+
+    service.start({ prompt: 'add dark mode', projectId });
+    expect(service.getProject(projectId).turns[1]).toMatchObject({
+      provider: 'ollama',
+      model: 'gemma3:4b',
+    });
   });
 
   it('throws NotFoundException for an unknown job id', () => {

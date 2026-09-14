@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { deleteProject, listProjects, type ProjectSummary } from '../lib/projects';
+import { SettingsModal } from './SettingsModal';
 
 interface SidebarProps {
   collapsed: boolean;
@@ -11,6 +12,7 @@ interface SidebarProps {
 
 export function Sidebar({ collapsed, onToggleCollapsed, refreshKey }: SidebarProps) {
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -59,6 +61,16 @@ export function Sidebar({ collapsed, onToggleCollapsed, refreshKey }: SidebarPro
         >
           <ChevronIcon direction="right" />
         </button>
+        <button
+          type="button"
+          onClick={() => setSettingsOpen(true)}
+          title="Build options"
+          aria-label="Build options"
+          className="mt-auto rounded-md p-2 text-on-dark-soft transition hover:bg-surface-dark-elevated hover:text-on-dark"
+        >
+          <GearIcon />
+        </button>
+        <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
       </div>
     );
   }
@@ -67,7 +79,7 @@ export function Sidebar({ collapsed, onToggleCollapsed, refreshKey }: SidebarPro
     <div className="flex h-full w-64 flex-shrink-0 flex-col border-r border-surface-dark-elevated bg-surface-dark">
       <div className="flex items-center justify-between px-3 py-3">
         <span className="font-display text-lg tracking-tight text-on-dark">
-          OpenLove
+          Open-Love
         </span>
         <button
           type="button"
@@ -124,6 +136,18 @@ export function Sidebar({ collapsed, onToggleCollapsed, refreshKey }: SidebarPro
           </ul>
         )}
       </nav>
+
+      <div className="border-t border-surface-dark-elevated p-2">
+        <button
+          type="button"
+          onClick={() => setSettingsOpen(true)}
+          className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-on-dark-soft transition hover:bg-surface-dark-elevated hover:text-on-dark"
+        >
+          <GearIcon /> Build options
+        </button>
+      </div>
+
+      <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
     </div>
   );
 }
@@ -141,6 +165,24 @@ function ChevronIcon({ direction }: { direction: 'left' | 'right' }) {
         d={direction === 'left' ? 'M12.5 4.5 7 10l5.5 5.5' : 'M7.5 4.5 13 10l-5.5 5.5'}
         strokeLinecap="round"
         strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function GearIcon() {
+  return (
+    <svg
+      viewBox="0 0 20 20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.5}
+      className="h-4 w-4"
+    >
+      <circle cx="10" cy="10" r="2.5" />
+      <path
+        d="M10 2.5v2M10 15.5v2M4.2 4.2l1.4 1.4M14.4 14.4l1.4 1.4M2.5 10h2M15.5 10h2M4.2 15.8l1.4-1.4M14.4 5.6l1.4-1.4"
+        strokeLinecap="round"
       />
     </svg>
   );

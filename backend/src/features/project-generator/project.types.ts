@@ -2,6 +2,21 @@ import { AgentOutputEvent } from './agent/agent-service.interface';
 
 export type TurnStatus = 'running' | 'completed' | 'failed' | 'cancelled';
 
+/** Which agent strategy builds a turn. 'claude' shells out to the Claude
+ *  Code CLI; 'ollama' runs a local tool-use loop against Ollama - see
+ *  agent/agent-registry.service.ts. More providers (openai, gemini, ...)
+ *  plug in the same way later. */
+export type AgentProvider = 'claude' | 'ollama';
+
+export interface AgentSelection {
+  provider: AgentProvider;
+  /** Which local model for 'ollama' (required in practice - nothing runs
+   *  without one); which tier alias ('opus' | 'sonnet' | 'haiku') for
+   *  'claude' - see ClaudeCliService.DEFAULT_CLAUDE_MODEL for the fallback
+   *  when unset. */
+  model?: string;
+}
+
 /** A reference file the user attached to a prompt, saved under that turn's
  *  own folder so the agent can read it - see ProjectGeneratorService.start. */
 export interface TurnAttachment {
@@ -24,6 +39,8 @@ export interface TurnRecord {
   status: TurnStatus;
   finishedAt?: string;
   attachments?: TurnAttachment[];
+  provider: AgentProvider;
+  model?: string;
 }
 
 /** A turn plus its replayed raw output - what today's terminal view renders. */

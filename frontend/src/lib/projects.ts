@@ -1,3 +1,5 @@
+import type { AgentSelection } from './settings';
+
 const API_BASE = 'http://localhost:3000';
 
 /** Mirrors the backend's AgentOutputEvent discriminated union. */
@@ -25,6 +27,8 @@ export interface TurnDetail {
   finishedAt?: string;
   events: AgentOutputEvent[];
   attachments?: TurnAttachment[];
+  provider: 'claude' | 'ollama';
+  model?: string;
 }
 
 export interface ProjectSummary {
@@ -73,6 +77,7 @@ export async function startGeneration(
   prompt: string,
   target: { name: string } | { projectId: string },
   attachments: File[] = [],
+  selection?: AgentSelection,
 ): Promise<{ jobId: string; projectId: string }> {
   const form = new FormData();
   form.append('prompt', prompt);
@@ -81,6 +86,10 @@ export async function startGeneration(
   }
   for (const file of attachments) {
     form.append('files', file);
+  }
+  if (selection) {
+    form.append('provider', selection.provider);
+    if (selection.model) form.append('model', selection.model);
   }
   const res = await fetch(`${API_BASE}/project-generator`, {
     method: 'POST',

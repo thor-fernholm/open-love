@@ -1,4 +1,6 @@
 import { FileButton } from './FileButton';
+import { ModelSelect } from './ModelSelect';
+import type { AgentSelection } from '../lib/settings';
 
 export type GenerationStatus =
   | 'idle'
@@ -20,6 +22,8 @@ interface PromptFormProps {
   onPromptChange: (value: string) => void;
   attachments: File[];
   onAttachmentsChange: (files: File[]) => void;
+  selection: AgentSelection;
+  onSelectionChange: (selection: AgentSelection) => void;
   onGenerate: () => void;
   onCancel: () => void;
 }
@@ -33,6 +37,8 @@ export function PromptForm({
   onPromptChange,
   attachments,
   onAttachmentsChange,
+  selection,
+  onSelectionChange,
   onGenerate,
   onCancel,
 }: PromptFormProps) {
@@ -87,51 +93,59 @@ export function PromptForm({
         />
       </div>
 
-      <div className="flex flex-wrap items-center gap-2">
-        <FileButton
-          accept={ATTACHMENT_ACCEPT}
-          multiple
-          disabled={running || attachments.length >= MAX_ATTACHMENTS}
-          onFiles={addFiles}
-        >
-          <PaperclipIcon /> Attach
-        </FileButton>
-        {attachments.map((file, i) => (
-          <span
-            key={`${file.name}-${i}`}
-            className="inline-flex items-center gap-1.5 rounded-full bg-surface-soft px-2.5 py-1 text-xs text-ink"
-          >
-            <span className="max-w-[10rem] truncate">{file.name}</span>
-            <button
-              type="button"
-              onClick={() => removeFile(i)}
-              aria-label={`Remove ${file.name}`}
-              className="text-muted hover:text-error"
+      {attachments.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2">
+          {attachments.map((file, i) => (
+            <span
+              key={`${file.name}-${i}`}
+              className="inline-flex items-center gap-1.5 rounded-full bg-surface-soft px-2.5 py-1 text-xs text-ink"
             >
-              ×
-            </button>
-          </span>
-        ))}
-      </div>
+              <span className="max-w-[10rem] truncate">{file.name}</span>
+              <button
+                type="button"
+                onClick={() => removeFile(i)}
+                aria-label={`Remove ${file.name}`}
+                className="text-muted hover:text-error"
+              >
+                ×
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
 
-      <div className="flex gap-3">
-        <button
-          type="button"
-          onClick={onGenerate}
-          disabled={!canGenerate}
-          className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-on-primary shadow-sm transition hover:bg-primary-active disabled:cursor-not-allowed disabled:bg-primary-disabled disabled:text-muted"
-        >
-          {mode === 'new' ? 'Generate Project' : 'Send'}
-        </button>
-        {running && (
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex gap-3">
           <button
             type="button"
-            onClick={onCancel}
-            className="rounded-md bg-error px-4 py-2 text-sm font-medium text-on-primary shadow-sm transition hover:opacity-90"
+            onClick={onGenerate}
+            disabled={!canGenerate}
+            className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-on-primary shadow-sm transition hover:bg-primary-active disabled:cursor-not-allowed disabled:bg-primary-disabled disabled:text-muted"
           >
-            Cancel
+            {mode === 'new' ? 'Generate Project' : 'Send'}
           </button>
-        )}
+          {running && (
+            <button
+              type="button"
+              onClick={onCancel}
+              className="rounded-md bg-error px-4 py-2 text-sm font-medium text-on-primary shadow-sm transition hover:opacity-90"
+            >
+              Cancel
+            </button>
+          )}
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <ModelSelect value={selection} onChange={onSelectionChange} disabled={running} />
+          <FileButton
+            accept={ATTACHMENT_ACCEPT}
+            multiple
+            disabled={running || attachments.length >= MAX_ATTACHMENTS}
+            onFiles={addFiles}
+          >
+            <PaperclipIcon /> Attach
+          </FileButton>
+        </div>
       </div>
     </div>
   );

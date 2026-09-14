@@ -2,20 +2,32 @@ import { Injectable } from '@nestjs/common';
 import { spawnSync } from 'child_process';
 import spawn from 'cross-spawn';
 import { Subject } from 'rxjs';
-import {
+import { buildClaudePrompt } from './prompt-template';
+import type {
   AgentOutputEvent,
   AgentProcessHandle,
+  AgentRunRequest,
   IAgentService,
 } from './agent-service.interface';
 
+// The CLI's own tier aliases - it resolves each to whatever its current
+// snapshot for that tier is, so this doesn't need updating as models age
+// out (unlike pinning a dated snapshot id directly).
+export const DEFAULT_CLAUDE_MODEL = 'haiku';
+
 /**
  * Concrete Strategy: generates a project by shelling out to the `claude`
- * CLI in non-interactive mode, auto-accepting file edits.
+ * CLI in non-interactive mode, auto-accepting file edits. The CLI is
+ * already its own polished coding agent, so this strategy just wraps the
+ * shared conventions around the user's prompt (buildClaudePrompt) rather
+ * than driving a tool-use loop itself - see SdkAgentService for the
+ * strategy that does.
  */
 @Injectable()
 export class ClaudeCliService implements IAgentService {
-  run(prompt: string, cwd: string): AgentProcessHandle {
+  run(request: AgentRunRequest): AgentProcessHandle {
     const output$ = new Subject<AgentOutputEvent>();
+    const prompt = buildClaudePrompt(request.userPrompt, request.attachments);
 
     // cross-spawn resolves npm-installed `.cmd`/`.bat` shims on Windows
     // (which Node's own child_process.spawn can't launch without a shell)
@@ -31,9 +43,9 @@ export class ClaudeCliService implements IAgentService {
         '--permission-mode',
         'acceptEdits',
         '--model',
-        'claude-haiku-4-5-20251001',
+        request.model ?? DEFAULT_CLAUDE_MODEL,
       ],
-      { cwd },
+      { cwd: request.cwd },
     );
     // Immediately signal EOF on stdin (rather than leaving it open-but-idle,
     // which makes the CLI stall for a few seconds probing for piped input,

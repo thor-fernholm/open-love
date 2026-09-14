@@ -13,6 +13,7 @@ import {
   type TurnDetail,
   type TurnStatus,
 } from '../lib/projects';
+import { getSettings, type AgentSelection } from '../lib/settings';
 
 const STATUS_STYLES: Record<GenerationStatus, string> = {
   idle: 'bg-surface-card text-muted',
@@ -49,6 +50,7 @@ export function ProjectPage({ onProjectsChanged }: ProjectPageProps) {
   const [projectName, setProjectName] = useState<string | null>(null);
   const [prompt, setPrompt] = useState('');
   const [attachments, setAttachments] = useState<File[]>([]);
+  const [selection, setSelection] = useState<AgentSelection>({ provider: 'claude' });
   const [jobId, setJobId] = useState<string | null>(null);
   const [turns, setTurns] = useState<TurnDetail[]>([]);
   const [loading, setLoading] = useState(Boolean(id));
@@ -143,6 +145,18 @@ export function ProjectPage({ onProjectsChanged }: ProjectPageProps) {
         if (cancelled) return;
         setProjectName(project.name);
         setTurns(project.turns);
+        const lastTurn = project.turns[project.turns.length - 1];
+        if (lastTurn) {
+          setSelection({ provider: lastTurn.provider, model: lastTurn.model });
+        } else {
+          getSettings()
+            .then((s) => {
+              if (!cancelled) setSelection(s);
+            })
+            .catch(() => {
+              // Keep the Claude Code fallback already in state.
+            });
+        }
         if (project.activeJobId) {
           setJobId(project.activeJobId);
           openStream(project.activeJobId);
@@ -162,6 +176,23 @@ export function ProjectPage({ onProjectsChanged }: ProjectPageProps) {
     };
   }, [id, openStream]);
 
+  // A brand-new project has no turn history to inherit a selection from -
+  // start from the persisted global default instead.
+  useEffect(() => {
+    if (id) return;
+    let cancelled = false;
+    getSettings()
+      .then((s) => {
+        if (!cancelled) setSelection(s);
+      })
+      .catch(() => {
+        // Keep the Claude Code fallback already in state.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [id]);
+
   async function handleGenerate() {
     const trimmedPrompt = prompt.trim();
     if (!trimmedPrompt || starting || sending) return;
@@ -176,6 +207,7 @@ export function ProjectPage({ onProjectsChanged }: ProjectPageProps) {
           trimmedPrompt,
           { name: trimmedName },
           attachments,
+          selection,
         );
         onProjectsChanged();
         navigate(`/projects/${projectId}`);
@@ -194,6 +226,7 @@ export function ProjectPage({ onProjectsChanged }: ProjectPageProps) {
         trimmedPrompt,
         { projectId: id },
         attachments,
+        selection,
       );
       setPrompt('');
       setJobId(newJobId);
@@ -210,6 +243,8 @@ export function ProjectPage({ onProjectsChanged }: ProjectPageProps) {
             path: '',
             mimeType: file.type,
           })),
+          provider: selection.provider,
+          model: selection.model,
         },
       ]);
       setAttachments([]);
@@ -353,6 +388,8 @@ export function ProjectPage({ onProjectsChanged }: ProjectPageProps) {
           onPromptChange={setPrompt}
           attachments={attachments}
           onAttachmentsChange={setAttachments}
+          selection={selection}
+          onSelectionChange={setSelection}
           onGenerate={handleGenerate}
           onCancel={handleCancel}
         />
