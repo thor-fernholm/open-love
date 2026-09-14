@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { ChatTurn } from '../components/ChatTurn';
+import { ExportModal } from '../components/ExportModal';
 import { PromptForm, type GenerationStatus } from '../components/PromptForm';
+import { getContent } from '../lib/content';
 import {
   cancelGeneration,
+  exportUrl,
   getProject,
   previewUrl,
   renameProject,
@@ -54,12 +57,15 @@ export function ProjectPage({ onProjectsChanged }: ProjectPageProps) {
   const [jobId, setJobId] = useState<string | null>(null);
   const [turns, setTurns] = useState<TurnDetail[]>([]);
   const [loading, setLoading] = useState(Boolean(id));
+  // null = not yet known - treated as not-ready, same as `loading`.
+  const [hasContent, setHasContent] = useState<boolean | null>(null);
   const [starting, setStarting] = useState(false);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState('');
   const [renaming, setRenaming] = useState(false);
+  const [exportModalOpen, setExportModalOpen] = useState(false);
   const eventSourceRef = useRef<EventSource | null>(null);
   const historyRef = useRef<HTMLDivElement>(null);
 
@@ -175,6 +181,25 @@ export function ProjectPage({ onProjectsChanged }: ProjectPageProps) {
       cancelled = true;
     };
   }, [id, openStream]);
+
+  // Cheap check for whether "Edit content" actually leads anywhere - a
+  // static project (no content/manifest.json) has nothing to edit, and
+  // getContent() never 404s for that case (it returns an empty collection
+  // list instead), so this can't be inferred from getProject() above.
+  useEffect(() => {
+    if (!id) return;
+    let cancelled = false;
+    getContent(id)
+      .then((content) => {
+        if (!cancelled) setHasContent(content.collections.length > 0);
+      })
+      .catch(() => {
+        if (!cancelled) setHasContent(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [id]);
 
   // A brand-new project has no turn history to inherit a selection from -
   // start from the persisted global default instead.
@@ -297,6 +322,7 @@ export function ProjectPage({ onProjectsChanged }: ProjectPageProps) {
   const status: GenerationStatus =
     starting || sending ? 'running' : statusFromTurns(turns);
   const canOpenWebsite = Boolean(id) && !loading && status !== 'running';
+  const canEditContent = Boolean(id) && !loading && hasContent === true;
 
   return (
     <div className="flex h-full flex-col">
@@ -335,21 +361,31 @@ export function ProjectPage({ onProjectsChanged }: ProjectPageProps) {
 
         {id && (
           <div className="flex flex-shrink-0 items-center gap-2">
-            <Link
-              to={`/projects/${id}/content`}
-              className="rounded-md border border-hairline px-4 py-2 text-sm font-medium text-ink shadow-sm transition hover:bg-surface-soft"
+            <button
+              type="button"
+              disabled={!canEditContent}
+              onClick={() => navigate(`/projects/${id}/content`)}
+              className="rounded-md border border-accent-teal px-4 py-2 text-sm font-medium text-accent-teal shadow-sm transition hover:bg-accent-teal/10 disabled:cursor-not-allowed disabled:opacity-40"
             >
               Edit content
-            </Link>
+            </button>
             <button
               type="button"
               disabled={!canOpenWebsite}
               onClick={() =>
                 window.open(previewUrl(id), '_blank', 'noopener,noreferrer')
               }
-              className="rounded-md border border-hairline px-4 py-2 text-sm font-medium text-ink shadow-sm transition hover:bg-surface-soft disabled:cursor-not-allowed disabled:opacity-40"
+              className="rounded-md border border-primary px-4 py-2 text-sm font-medium text-primary shadow-sm transition hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-40"
             >
-              Open website ↗
+              Open preview ↗
+            </button>
+            <button
+              type="button"
+              disabled={!canOpenWebsite}
+              onClick={() => setExportModalOpen(true)}
+              className="rounded-md border border-accent-amber px-4 py-2 text-sm font-medium text-accent-amber shadow-sm transition hover:bg-accent-amber/10 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Export website ⬇
             </button>
           </div>
         )}
@@ -394,6 +430,17 @@ export function ProjectPage({ onProjectsChanged }: ProjectPageProps) {
           onCancel={handleCancel}
         />
       </div>
+
+      {id && (
+        <ExportModal
+          open={exportModalOpen}
+          onClose={() => setExportModalOpen(false)}
+          onConfirm={() => {
+            window.open(exportUrl(id), '_blank');
+            setExportModalOpen(false);
+          }}
+        />
+      )}
     </div>
   );
 }

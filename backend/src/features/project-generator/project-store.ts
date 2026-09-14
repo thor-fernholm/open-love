@@ -179,3 +179,25 @@ export function listProjectIds(): string[] {
     .filter((entry) => entry.isDirectory())
     .map((entry) => entry.name);
 }
+
+/** Every file under `root` (recursive, forward-slash-normalized relative
+ *  paths), skipping `.openlove/` - this app's own metadata, never part of
+ *  the generated site itself. Shared by the agent's own `list_files` tool
+ *  (agent/tools.ts) and project export (project-generator.service.ts), so
+ *  both see exactly the same "what's actually in this project" view. */
+export function listDirRecursive(root: string, relDir: string): string[] {
+  const abs = join(root, relDir);
+  if (!existsSync(abs)) return [];
+  const entries = readdirSync(abs, { withFileTypes: true });
+  const results: string[] = [];
+  for (const entry of entries) {
+    if (entry.name === '.openlove') continue;
+    const relPath = relDir === '.' ? entry.name : join(relDir, entry.name);
+    if (entry.isDirectory()) {
+      results.push(...listDirRecursive(root, relPath));
+    } else {
+      results.push(relPath.split('\\').join('/'));
+    }
+  }
+  return results;
+}

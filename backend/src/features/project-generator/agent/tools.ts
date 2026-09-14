@@ -1,33 +1,8 @@
 import { tool } from 'ai';
-import {
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  readdirSync,
-  statSync,
-  writeFileSync,
-} from 'fs';
-import { dirname, join } from 'path';
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'fs';
+import { dirname } from 'path';
 import { z } from 'zod';
-import { resolveWithinDir } from '../project-store';
-
-function listDirRecursive(root: string, relDir: string): string[] {
-  const abs = join(root, relDir);
-  if (!existsSync(abs)) return [];
-  const entries = readdirSync(abs, { withFileTypes: true });
-  const results: string[] = [];
-  for (const entry of entries) {
-    // .openlove is this app's own metadata, not part of the generated site.
-    if (entry.name === '.openlove') continue;
-    const relPath = relDir === '.' ? entry.name : join(relDir, entry.name);
-    if (entry.isDirectory()) {
-      results.push(...listDirRecursive(root, relPath));
-    } else {
-      results.push(relPath.split('\\').join('/'));
-    }
-  }
-  return results;
-}
+import { listDirRecursive, resolveWithinDir } from '../project-store';
 
 /**
  * The file tools SdkAgentService gives a model - the minimal set needed to

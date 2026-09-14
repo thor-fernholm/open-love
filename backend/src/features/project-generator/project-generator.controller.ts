@@ -9,6 +9,7 @@ import {
   Patch,
   Post,
   Sse,
+  StreamableFile,
   UploadedFiles,
   UseInterceptors,
 } from '@nestjs/common';
@@ -42,6 +43,11 @@ export class ProjectGeneratorController {
   @Get('projects/:id')
   getProject(@Param('id') id: string): ProjectDetail {
     return this.projectGenerator.getProject(id);
+  }
+
+  @Get('projects/:id/export')
+  exportProject(@Param('id') id: string): StreamableFile {
+    return this.projectGenerator.exportProject(id);
   }
 
   @Patch('projects/:id')

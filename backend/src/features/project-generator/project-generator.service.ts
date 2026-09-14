@@ -2,7 +2,9 @@ import {
   BadRequestException,
   Injectable,
   NotFoundException,
+  StreamableFile,
 } from '@nestjs/common';
+import archiver from 'archiver';
 import { randomUUID } from 'crypto';
 import { existsSync, mkdirSync, rmSync, statSync, writeFileSync } from 'fs';
 import { extname, join } from 'path';
@@ -16,6 +18,7 @@ import {
   appendTurnEvent,
   assertSafeId,
   getProjectDir,
+  listDirRecursive,
   listProjectIds,
   readAllTurns,
   readMeta,
@@ -167,6 +170,35 @@ export class ProjectGeneratorService {
       turns: readAllTurns(id),
       activeJobId: this.findActiveJobId(id),
     };
+  }
+
+  /**
+   * Zips up a generated project's own files so it can be downloaded and
+   * hosted anywhere - since every generated site is already plain static
+   * HTML/CSS/JS with no build step (see agent/prompt-template.ts), the zip
+   * *is* the deployable artifact, no packaging needed beyond this.
+   * `.openlove/` (attachments, turn history, internal metadata) is left
+   * out via listDirRecursive - the same "what's actually part of the site"
+   * view the agent's own list_files tool sees.
+   */
+  exportProject(id: string): StreamableFile {
+    assertSafeId(id);
+    const root = getProjectDir(id);
+    if (!existsSync(root)) {
+      throw new NotFoundException(`No project found with id ${id}`);
+    }
+    const meta = readMeta(id) ?? this.legacyMeta(id);
+
+    const archive = archiver('zip', { zlib: { level: 9 } });
+    for (const relPath of listDirRecursive(root, '.')) {
+      archive.file(join(root, relPath), { name: relPath });
+    }
+    void archive.finalize();
+
+    return new StreamableFile(archive, {
+      type: 'application/zip',
+      disposition: `attachment; filename="${sanitizeFilename(meta.name)}.zip"`,
+    });
   }
 
   renameProject(id: string, name: string): ProjectSummary {

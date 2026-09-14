@@ -136,3 +136,9 @@ export function streamUrl(jobId: string): string {
 export function previewUrl(projectId: string): string {
   return `${API_BASE}/project-generator/projects/${projectId}/preview/`;
 }
+
+/** The "Export" target - a zip of the project's own files, streamed with
+ *  Content-Disposition: attachment so navigating to it just downloads. */
+export function exportUrl(projectId: string): string {
+  return `${API_BASE}/project-generator/projects/${projectId}/export`;
+}
