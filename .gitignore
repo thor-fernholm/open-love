@@ -1,0 +1,8 @@
+# Output of the project-generator feature (backend/src/features/project-generator)
+/generated-projects
+node_modules/
+dist/
+build/
+.env
+generated-projects/
+.claude/
