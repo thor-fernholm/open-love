@@ -1,10 +1,11 @@
-import { NotFoundException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { Subject } from 'rxjs';
 import { jest } from '@jest/globals';
-import { rmSync } from 'fs';
+import { existsSync, readdirSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
+import { getProjectDir } from './project-store';
 import {
   AGENT_SERVICE,
   AgentOutputEvent,
@@ -58,10 +59,10 @@ describe('ProjectGeneratorService', () => {
     rmSync(testDir, { recursive: true, force: true });
   });
 
-  it('streams output and marks the job completed on a clean exit', (done) => {
-    const { jobId } = service.start({
+  it('streams output, persists the turn, and marks the job completed on a clean exit', (done) => {
+    const { jobId, projectId } = service.start({
       prompt: 'a todo app',
-      projectName: 'todo-app',
+      name: 'Todo App',
     });
 
     const received: AgentOutputEvent[] = [];
@@ -72,6 +73,17 @@ describe('ProjectGeneratorService', () => {
           { type: 'stdout', data: 'hello' },
           { type: 'exit', code: 0 },
         ]);
+
+        const project = service.getProject(projectId);
+        expect(project.name).toBe('Todo App');
+        expect(project.activeJobId).toBeNull();
+        expect(project.turns).toHaveLength(1);
+        expect(project.turns[0]).toMatchObject({
+          turnId: jobId,
+          prompt: 'a todo app',
+          status: 'completed',
+        });
+        expect(project.turns[0].events).toEqual(received);
         done();
       },
     });
@@ -81,17 +93,34 @@ describe('ProjectGeneratorService', () => {
     agent.lastHandle.subject.complete();
   });
 
-  it('kills the process and completes the stream on cancel', (done) => {
-    const { jobId } = service.start({
+  it('kills the process, completes the stream, and persists a cancelled turn', (done) => {
+    const { jobId, projectId } = service.start({
       prompt: 'a todo app',
-      projectName: 'todo-app',
+      name: 'Todo App',
     });
 
-    service.stream(jobId).subscribe({ complete: () => done() });
+    service.stream(jobId).subscribe({
+      complete: () => {
+        expect(service.getProject(projectId).turns[0].status).toBe(
+          'cancelled',
+        );
+        done();
+      },
+    });
 
     service.cancel(jobId);
 
     expect(agent.lastHandle.kill).toHaveBeenCalledTimes(1);
+  });
+
+  it('reuses an existing project for a follow-up prompt with the same projectId', () => {
+    const { projectId } = service.start({ prompt: 'a todo app', name: 'Todo App' });
+    agent.lastHandle.subject.next({ type: 'exit', code: 0 });
+    agent.lastHandle.subject.complete();
+
+    const followUp = service.start({ prompt: 'add dark mode', projectId });
+    expect(followUp.projectId).toBe(projectId);
+    expect(service.getProject(projectId).turns).toHaveLength(2);
   });
 
   it('throws NotFoundException for an unknown job id', () => {
@@ -103,9 +132,65 @@ describe('ProjectGeneratorService', () => {
     );
   });
 
-  it('rejects a projectName that attempts path traversal', () => {
+  it('throws NotFoundException for an unknown project id', () => {
+    expect(() => service.getProject('does-not-exist')).toThrow(
+      NotFoundException,
+    );
+  });
+
+  it('starts a brand-new project from a blank folder (no seeding)', () => {
+    const { projectId } = service.start({ prompt: 'a site', name: 'Site' });
+    const projectPath = getProjectDir(projectId);
+    expect(existsSync(projectPath)).toBe(true);
+    // Only the .openlove metadata dir - nothing seeded into the project itself.
+    expect(readdirSync(projectPath)).toEqual(['.openlove']);
+  });
+
+  it('requires a name when starting a brand-new project', () => {
+    expect(() => service.start({ prompt: 'x' })).toThrow(
+      BadRequestException,
+    );
+  });
+
+  it('rejects a projectId that attempts path traversal', () => {
     expect(() =>
-      service.start({ prompt: 'x', projectName: '../../etc' }),
+      service.start({ prompt: 'x', projectId: '../../etc' }),
     ).toThrow();
+  });
+
+  it('lists all projects, newest first', () => {
+    const { projectId: first } = service.start({ prompt: 'a', name: 'First' });
+    agent.lastHandle.subject.next({ type: 'exit', code: 0 });
+    agent.lastHandle.subject.complete();
+
+    const { projectId: second } = service.start({ prompt: 'b', name: 'Second' });
+    agent.lastHandle.subject.next({ type: 'exit', code: 0 });
+    agent.lastHandle.subject.complete();
+
+    const ids = service.listProjects().map((p) => p.id);
+    expect(ids.indexOf(second)).toBeLessThan(ids.indexOf(first));
+  });
+
+  it('resolves an agent-written index.html for the root preview path, and rejects traversal', () => {
+    const { projectId } = service.start({ prompt: 'a site', name: 'Site' });
+    // Simulate the agent having written a site into the project folder.
+    writeFileSync(join(getProjectDir(projectId), 'index.html'), '<html></html>');
+    agent.lastHandle.subject.next({ type: 'exit', code: 0 });
+    agent.lastHandle.subject.complete();
+
+    expect(service.resolvePreviewFile(projectId, '')).toContain('index.html');
+    expect(() =>
+      service.resolvePreviewFile(projectId, '../../etc/passwd'),
+    ).toThrow(BadRequestException);
+  });
+
+  it('404s the preview for a project the agent never wrote an index.html into', () => {
+    const { projectId } = service.start({ prompt: 'a site', name: 'Site' });
+    agent.lastHandle.subject.next({ type: 'exit', code: 0 });
+    agent.lastHandle.subject.complete();
+
+    expect(() => service.resolvePreviewFile(projectId, '')).toThrow(
+      NotFoundException,
+    );
   });
 });

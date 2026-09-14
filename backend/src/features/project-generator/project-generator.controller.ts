@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Get,
   HttpCode,
   MessageEvent,
   Param,
@@ -10,14 +11,27 @@ import {
 import { map, Observable } from 'rxjs';
 import { GenerateProjectDto } from './dto/generate-project.dto';
 import { ProjectGeneratorService } from './project-generator.service';
+import type { ProjectDetail, ProjectSummary } from './project.types';
 
 @Controller('project-generator')
 export class ProjectGeneratorController {
   constructor(private readonly projectGenerator: ProjectGeneratorService) {}
 
   @Post()
-  start(@Body() dto: GenerateProjectDto): { jobId: string } {
+  start(
+    @Body() dto: GenerateProjectDto,
+  ): { jobId: string; projectId: string } {
     return this.projectGenerator.start(dto);
+  }
+
+  @Get('projects')
+  listProjects(): ProjectSummary[] {
+    return this.projectGenerator.listProjects();
+  }
+
+  @Get('projects/:id')
+  getProject(@Param('id') id: string): ProjectDetail {
+    return this.projectGenerator.getProject(id);
   }
 
   @Sse(':id/stream')

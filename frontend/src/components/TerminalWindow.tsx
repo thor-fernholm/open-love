@@ -6,12 +6,18 @@ export interface TerminalLine {
 }
 
 const LINE_CLASSES: Record<TerminalLine['type'], string> = {
-  stdout: 'text-neutral-200',
-  stderr: 'text-red-400',
-  system: 'text-neutral-500 italic',
+  stdout: 'text-on-dark',
+  stderr: 'text-error',
+  system: 'text-on-dark-soft italic',
 };
 
-export function TerminalWindow({ lines }: { lines: TerminalLine[] }) {
+export function TerminalWindow({
+  lines,
+  emptyText = 'Output will appear here once generation starts…',
+}: {
+  lines: TerminalLine[];
+  emptyText?: string;
+}) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -24,12 +30,10 @@ export function TerminalWindow({ lines }: { lines: TerminalLine[] }) {
   return (
     <div
       ref={scrollRef}
-      className="h-80 w-full overflow-y-auto rounded-lg bg-neutral-900 p-4 font-mono text-sm shadow-inner"
+      className="h-96 w-full overflow-y-auto rounded-lg bg-surface-dark p-4 font-mono text-sm shadow-inner ring-1 ring-surface-dark-elevated"
     >
       {lines.length === 0 ? (
-        <p className="text-neutral-500 italic">
-          Output will appear here once generation starts…
-        </p>
+        <p className="text-on-dark-soft italic">{emptyText}</p>
       ) : (
         lines.map((line, i) => (
           <pre
