@@ -24,7 +24,14 @@ export class ClaudeCliService implements IAgentService {
     // containing shell metacharacters break out or get mis-split.
     const child = spawn(
       'claude',
-      ['-p', prompt, '--permission-mode', 'acceptEdits'],
+      [
+        '-p',
+        prompt,
+        '--permission-mode',
+        'acceptEdits',
+        '--model',
+        'claude-haiku-4-5-20251001',
+      ],
       { cwd },
     );
     // Immediately signal EOF on stdin (rather than leaving it open-but-idle,

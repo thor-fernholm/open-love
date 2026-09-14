@@ -1,7 +1,10 @@
 import { NotFoundException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { Subject } from 'rxjs';
-import * as fs from 'fs';
+import { jest } from '@jest/globals';
+import { rmSync } from 'fs';
+import { tmpdir } from 'os';
+import { join } from 'path';
 import {
   AGENT_SERVICE,
   AgentOutputEvent,
@@ -29,9 +32,15 @@ class FakeAgentService implements IAgentService {
 describe('ProjectGeneratorService', () => {
   let service: ProjectGeneratorService;
   let agent: FakeAgentService;
+  // Real ESM module namespace objects are frozen, so `fs.mkdirSync` can't
+  // be spied on/monkey-patched here (Jest's ESM module mocking is more
+  // ceremony than this needs) - instead just point the service at a
+  // throwaway temp directory and let it create real folders there.
+  let testDir: string;
 
   beforeEach(async () => {
-    jest.spyOn(fs, 'mkdirSync').mockImplementation(() => undefined);
+    testDir = join(tmpdir(), `openlove-test-${Date.now()}`);
+    process.env.GENERATED_PROJECTS_DIR = testDir;
 
     agent = new FakeAgentService();
     const moduleRef = await Test.createTestingModule({
@@ -45,7 +54,8 @@ describe('ProjectGeneratorService', () => {
   });
 
   afterEach(() => {
-    jest.restoreAllMocks();
+    delete process.env.GENERATED_PROJECTS_DIR;
+    rmSync(testDir, { recursive: true, force: true });
   });
 
   it('streams output and marks the job completed on a clean exit', (done) => {
