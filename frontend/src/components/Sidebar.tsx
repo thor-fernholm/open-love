@@ -51,13 +51,13 @@ export function Sidebar({ collapsed, onToggleCollapsed, refreshKey }: SidebarPro
 
   if (collapsed) {
     return (
-      <div className="flex h-full w-14 flex-shrink-0 flex-col items-center gap-2 border-r border-surface-dark-elevated bg-surface-dark py-3">
+      <div className="flex h-full w-14 flex-shrink-0 flex-col items-center gap-2 border-r border-hairline bg-sidebar py-3">
         <button
           type="button"
           onClick={onToggleCollapsed}
           title="Expand sidebar"
           aria-label="Expand sidebar"
-          className="rounded-md p-2 text-on-dark-soft transition hover:bg-surface-dark-elevated hover:text-on-dark"
+          className="rounded-full p-2 text-muted transition hover:bg-sidebar-elevated hover:text-ink"
         >
           <ChevronIcon direction="right" />
         </button>
@@ -66,7 +66,7 @@ export function Sidebar({ collapsed, onToggleCollapsed, refreshKey }: SidebarPro
           onClick={() => setSettingsOpen(true)}
           title="Build options"
           aria-label="Build options"
-          className="mt-auto rounded-md p-2 text-on-dark-soft transition hover:bg-surface-dark-elevated hover:text-on-dark"
+          className="mt-auto rounded-full p-2 text-muted transition hover:bg-sidebar-elevated hover:text-ink"
         >
           <GearIcon />
         </button>
@@ -76,9 +76,9 @@ export function Sidebar({ collapsed, onToggleCollapsed, refreshKey }: SidebarPro
   }
 
   return (
-    <div className="flex h-full w-64 flex-shrink-0 flex-col border-r border-surface-dark-elevated bg-surface-dark">
+    <div className="flex h-full w-64 flex-shrink-0 flex-col border-r border-hairline bg-sidebar">
       <div className="flex items-center justify-between px-3 py-3">
-        <span className="font-display text-lg tracking-tight text-on-dark">
+        <span className="font-display text-lg tracking-tight text-ink">
           Open-Love
         </span>
         <button
@@ -86,7 +86,7 @@ export function Sidebar({ collapsed, onToggleCollapsed, refreshKey }: SidebarPro
           onClick={onToggleCollapsed}
           title="Collapse sidebar"
           aria-label="Collapse sidebar"
-          className="rounded-md p-1.5 text-on-dark-soft transition hover:bg-surface-dark-elevated hover:text-on-dark"
+          className="rounded-full p-1.5 text-muted transition hover:bg-sidebar-elevated hover:text-ink"
         >
           <ChevronIcon direction="left" />
         </button>
@@ -95,14 +95,14 @@ export function Sidebar({ collapsed, onToggleCollapsed, refreshKey }: SidebarPro
       <button
         type="button"
         onClick={() => navigate('/')}
-        className="mx-3 mb-3 flex items-center justify-center gap-1.5 rounded-md bg-primary px-3 py-2 text-sm font-medium text-on-primary shadow-sm transition hover:bg-primary-active"
+        className="mx-3 mb-3 flex items-center justify-center gap-1.5 rounded-sm bg-primary px-3 py-2 text-sm font-medium text-on-primary shadow-button-inset transition hover:opacity-80"
       >
         <span className="text-base leading-none">+</span> New project
       </button>
 
       <nav className="flex-1 overflow-y-auto px-2 pb-3">
         {projects.length === 0 ? (
-          <p className="px-3 py-1 text-xs text-on-dark-soft">
+          <p className="px-3 py-1 text-xs text-muted">
             No projects yet.
           </p>
         ) : (
@@ -115,8 +115,8 @@ export function Sidebar({ collapsed, onToggleCollapsed, refreshKey }: SidebarPro
                   className={({ isActive }) =>
                     `block flex-1 truncate rounded-md px-3 py-2 text-sm transition ${
                       isActive
-                        ? 'bg-surface-dark-elevated text-on-dark'
-                        : 'text-on-dark-soft hover:bg-surface-dark-elevated hover:text-on-dark'
+                        ? 'bg-sidebar-elevated text-ink'
+                        : 'text-muted hover:bg-sidebar-elevated hover:text-ink'
                     }`
                   }
                 >
@@ -127,7 +127,7 @@ export function Sidebar({ collapsed, onToggleCollapsed, refreshKey }: SidebarPro
                   onClick={(e) => handleDelete(e, project)}
                   aria-label={`Delete ${project.name}`}
                   title="Delete project"
-                  className="mr-1 flex-shrink-0 rounded p-1.5 text-on-dark-soft opacity-0 transition group-hover:opacity-100 hover:text-error"
+                  className="mr-1 flex-shrink-0 rounded p-1.5 text-muted opacity-0 transition group-hover:opacity-100 hover:text-error"
                 >
                   <TrashIcon />
                 </button>
@@ -137,11 +137,11 @@ export function Sidebar({ collapsed, onToggleCollapsed, refreshKey }: SidebarPro
         )}
       </nav>
 
-      <div className="border-t border-surface-dark-elevated p-2">
+      <div className="border-t border-hairline p-2">
         <button
           type="button"
           onClick={() => setSettingsOpen(true)}
-          className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-on-dark-soft transition hover:bg-surface-dark-elevated hover:text-on-dark"
+          className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-muted transition hover:bg-sidebar-elevated hover:text-ink"
         >
           <GearIcon /> Build options
         </button>

@@ -339,17 +339,22 @@ export function ProjectPage({ onProjectsChanged }: ProjectPageProps) {
                 if (e.key === 'Escape') setEditingName(false);
               }}
               disabled={renaming}
-              className="w-full max-w-xs rounded-md border border-hairline bg-canvas px-2 py-0.5 font-display text-2xl tracking-tight text-ink outline-none focus:border-primary"
+              className="w-full max-w-xs rounded-sm border border-hairline bg-canvas px-2 py-0.5 font-display text-2xl tracking-tight text-ink outline-none focus:border-primary focus:ring-2 focus:ring-ring/50"
             />
           ) : (
             <h1
               onClick={mode === 'existing' ? startEditingName : undefined}
               title={mode === 'existing' ? 'Click to rename' : undefined}
-              className={`truncate font-display text-2xl tracking-tight text-ink ${
+              className={`flex min-w-0 items-center gap-1.5 font-display text-2xl tracking-tight text-ink ${
                 mode === 'existing' ? 'cursor-pointer hover:opacity-70' : ''
               }`}
             >
-              {mode === 'existing' ? projectName ?? 'Loading…' : 'New project'}
+              <span className="truncate">
+                {mode === 'existing' ? projectName ?? 'Loading…' : 'New project'}
+              </span>
+              {mode === 'existing' && (
+                <PencilIcon className="h-4 w-4 flex-shrink-0 text-muted" />
+              )}
             </h1>
           )}
           <span
@@ -365,7 +370,7 @@ export function ProjectPage({ onProjectsChanged }: ProjectPageProps) {
               type="button"
               disabled={!canEditContent}
               onClick={() => navigate(`/projects/${id}/content`)}
-              className="rounded-md border border-accent-teal px-4 py-2 text-sm font-medium text-accent-teal shadow-sm transition hover:bg-accent-teal/10 disabled:cursor-not-allowed disabled:opacity-40"
+              className="rounded-sm border border-hairline-strong px-4 py-2 text-sm font-medium text-ink transition hover:bg-ink/5 disabled:cursor-not-allowed disabled:opacity-40"
             >
               Edit content
             </button>
@@ -375,7 +380,7 @@ export function ProjectPage({ onProjectsChanged }: ProjectPageProps) {
               onClick={() =>
                 window.open(previewUrl(id), '_blank', 'noopener,noreferrer')
               }
-              className="rounded-md border border-primary px-4 py-2 text-sm font-medium text-primary shadow-sm transition hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-40"
+              className="rounded-sm border border-primary px-4 py-2 text-sm font-medium text-primary transition hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-40"
             >
               Open preview ↗
             </button>
@@ -383,7 +388,7 @@ export function ProjectPage({ onProjectsChanged }: ProjectPageProps) {
               type="button"
               disabled={!canOpenWebsite}
               onClick={() => setExportModalOpen(true)}
-              className="rounded-md border border-accent-amber px-4 py-2 text-sm font-medium text-accent-amber shadow-sm transition hover:bg-accent-amber/10 disabled:cursor-not-allowed disabled:opacity-40"
+              className="rounded-sm border border-accent-warm px-4 py-2 text-sm font-medium text-accent-warm transition hover:bg-accent-warm/10 disabled:cursor-not-allowed disabled:opacity-40"
             >
               Export website ⬇
             </button>
@@ -442,5 +447,27 @@ export function ProjectPage({ onProjectsChanged }: ProjectPageProps) {
         />
       )}
     </div>
+  );
+}
+
+/** Signals the project title next to it is click-to-rename - shown only
+ *  once there's an actual saved project to rename (see the `mode ===
+ *  'existing'` guard above). */
+function PencilIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 20 20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.5}
+      className={className}
+    >
+      <path
+        d="M4.5 15.5 5 12.5l7-7 2.5 2.5-7 7-3 .5Z"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path d="M10.5 7 13 9.5" strokeLinecap="round" />
+    </svg>
   );
 }

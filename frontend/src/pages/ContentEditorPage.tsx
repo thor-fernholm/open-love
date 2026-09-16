@@ -16,7 +16,7 @@ import { getProject } from '../lib/projects';
 type RecordValue = Record<string, string>;
 
 const inputClass =
-  'w-full rounded-md border border-hairline bg-canvas px-3 py-2 text-sm text-ink shadow-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary-disabled';
+  'w-full rounded-sm border border-hairline bg-canvas px-3 py-2 text-sm text-ink shadow-sm outline-none focus:border-primary focus:ring-2 focus:ring-ring/50';
 
 interface FieldInputProps {
   field: ContentFieldSchema;
@@ -233,7 +233,7 @@ function CollectionEditor({ projectId, schema, initialData }: CollectionEditorPr
         <button
           type="button"
           onClick={addItem}
-          className="self-start rounded-md border border-hairline px-3 py-1.5 text-sm text-ink transition hover:bg-surface-soft"
+          className="self-start rounded-sm border border-hairline-strong px-3 py-1.5 text-sm text-ink transition hover:bg-ink/5"
         >
           + Add item
         </button>
@@ -244,7 +244,7 @@ function CollectionEditor({ projectId, schema, initialData }: CollectionEditorPr
           type="button"
           onClick={handleSave}
           disabled={saving}
-          className="self-start rounded-md bg-primary px-4 py-1.5 text-sm font-medium text-on-primary shadow-sm transition hover:bg-primary-active disabled:cursor-not-allowed disabled:bg-primary-disabled disabled:text-muted"
+          className="self-start rounded-sm bg-primary px-4 py-1.5 text-sm font-medium text-on-primary shadow-button-inset transition hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-40"
         >
           {saving ? 'Saving…' : 'Save'}
         </button>
@@ -298,7 +298,7 @@ export function ContentEditorPage() {
           </h1>
           <Link
             to={`/projects/${id}`}
-            className="text-xs text-primary hover:underline"
+            className="text-xs text-primary underline transition hover:opacity-70"
           >
             ← Back to project
           </Link>

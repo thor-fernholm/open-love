@@ -12,7 +12,7 @@ const VERBS = [
   'Wiring things up',
   'Polishing',
 ];
-const VERB_INTERVAL_MS = 2200;
+const VERB_INTERVAL_MS = 7000;
 
 function elapsedLabel(startedAt: string): string {
   const seconds = Math.max(0, Math.floor((Date.now() - Date.parse(startedAt)) / 1000));

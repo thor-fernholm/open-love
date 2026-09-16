@@ -16,7 +16,7 @@ export function ExportModal({ open, onClose, onConfirm }: ExportModalProps) {
       onClick={onClose}
     >
       <div
-        className="w-full max-w-sm rounded-lg border border-hairline bg-canvas p-6 shadow-lg"
+        className="w-full max-w-sm rounded-xl border border-hairline bg-canvas p-6 shadow-lg"
         onClick={(e) => e.stopPropagation()}
       >
         <h2 className="font-display text-xl tracking-tight text-ink">
@@ -33,14 +33,14 @@ export function ExportModal({ open, onClose, onConfirm }: ExportModalProps) {
           <button
             type="button"
             onClick={onClose}
-            className="rounded-md border border-hairline px-4 py-2 text-sm text-ink transition hover:bg-surface-soft"
+            className="rounded-sm border border-hairline-strong px-4 py-2 text-sm text-ink transition hover:bg-ink/5"
           >
             Cancel
           </button>
           <button
             type="button"
             onClick={onConfirm}
-            className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-on-primary shadow-sm transition hover:bg-primary-active"
+            className="rounded-sm bg-primary px-4 py-2 text-sm font-medium text-on-primary shadow-button-inset transition hover:opacity-80"
           >
             Download zip
           </button>

@@ -46,7 +46,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
       onClick={onClose}
     >
       <div
-        className="w-full max-w-sm rounded-lg border border-hairline bg-canvas p-6 shadow-lg"
+        className="w-full max-w-sm rounded-xl border border-hairline bg-canvas p-6 shadow-lg"
         onClick={(e) => e.stopPropagation()}
       >
         <h2 className="font-display text-xl tracking-tight text-ink">
@@ -60,7 +60,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
         <ModelSelect
           value={selection}
           onChange={setSelection}
-          className="w-full rounded-md border border-hairline bg-canvas px-3 py-2 text-sm text-ink outline-none focus:border-primary"
+          className="w-full rounded-sm border border-hairline bg-canvas px-3 py-2 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-ring/50"
         />
 
         {error && <p className="mt-3 text-sm text-error">{error}</p>}
@@ -69,7 +69,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
           <button
             type="button"
             onClick={onClose}
-            className="rounded-md border border-hairline px-4 py-2 text-sm text-ink transition hover:bg-surface-soft"
+            className="rounded-sm border border-hairline-strong px-4 py-2 text-sm text-ink transition hover:bg-ink/5"
           >
             Cancel
           </button>
@@ -77,7 +77,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
             type="button"
             onClick={handleSave}
             disabled={saving}
-            className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-on-primary shadow-sm transition hover:bg-primary-active disabled:cursor-not-allowed disabled:opacity-50"
+            className="rounded-sm bg-primary px-4 py-2 text-sm font-medium text-on-primary shadow-button-inset transition hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {saving ? 'Saving…' : 'Save'}
           </button>

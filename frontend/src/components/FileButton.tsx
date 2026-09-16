@@ -10,7 +10,7 @@ interface FileButtonProps {
 }
 
 const DEFAULT_CLASS =
-  'inline-flex items-center gap-1.5 rounded-md border border-hairline px-3 py-1.5 text-sm text-ink transition hover:bg-surface-soft disabled:cursor-not-allowed disabled:opacity-50';
+  'inline-flex items-center gap-1.5 rounded-sm border border-hairline-strong px-3 py-1.5 text-sm text-ink transition hover:bg-ink/5 disabled:cursor-not-allowed disabled:opacity-50';
 
 /**
  * A file picker that actually looks like a button - a raw

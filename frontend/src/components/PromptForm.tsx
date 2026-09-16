@@ -73,7 +73,7 @@ export function PromptForm({
             onChange={(e) => onNameChange(e.target.value)}
             disabled={running}
             placeholder="e.g. Personal portfolio site"
-            className="w-full rounded-md border border-hairline bg-canvas px-3 py-2 text-sm text-ink shadow-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary-disabled disabled:opacity-60"
+            className="w-full rounded-sm border border-hairline bg-canvas px-3 py-2 text-sm text-ink shadow-sm outline-none focus:border-primary focus:ring-2 focus:ring-ring/50 disabled:opacity-60"
           />
         </div>
       )}
@@ -89,7 +89,7 @@ export function PromptForm({
           disabled={running}
           placeholder="Describe the project you want to generate…"
           rows={4}
-          className="w-full resize-none rounded-md border border-hairline bg-canvas p-3 text-sm text-ink shadow-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary-disabled disabled:opacity-60"
+          className="w-full resize-none rounded-sm border border-hairline bg-canvas p-3 text-sm text-ink shadow-sm outline-none focus:border-primary focus:ring-2 focus:ring-ring/50 disabled:opacity-60"
         />
       </div>
 
@@ -120,7 +120,7 @@ export function PromptForm({
             type="button"
             onClick={onGenerate}
             disabled={!canGenerate}
-            className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-on-primary shadow-sm transition hover:bg-primary-active disabled:cursor-not-allowed disabled:bg-primary-disabled disabled:text-muted"
+            className="rounded-sm bg-primary px-4 py-2 text-sm font-medium text-on-primary shadow-button-inset transition hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-40"
           >
             {mode === 'new' ? 'Generate Project' : 'Send'}
           </button>
@@ -128,7 +128,7 @@ export function PromptForm({
             <button
               type="button"
               onClick={onCancel}
-              className="rounded-md bg-error px-4 py-2 text-sm font-medium text-on-primary shadow-sm transition hover:opacity-90"
+              className="rounded-sm bg-error px-4 py-2 text-sm font-medium text-on-primary shadow-button-inset transition hover:opacity-80"
             >
               Cancel
             </button>

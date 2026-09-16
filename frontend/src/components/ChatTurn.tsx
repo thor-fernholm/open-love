@@ -60,7 +60,7 @@ export function ChatTurn({ turn }: { turn: TurnDetail }) {
   return (
     <div className="flex flex-col gap-2">
       <div className="flex max-w-[85%] flex-col gap-1.5 self-end">
-        <div className="rounded-lg bg-primary px-4 py-2 text-sm text-on-primary shadow-sm">
+        <div className="rounded-lg bg-gradient-to-br from-primary from-65% to-accent-warm px-4 py-2 text-sm text-on-primary shadow-sm">
           {turn.prompt}
         </div>
         {turn.attachments && turn.attachments.length > 0 && (
@@ -86,7 +86,7 @@ export function ChatTurn({ turn }: { turn: TurnDetail }) {
               <button
                 type="button"
                 onClick={() => setExpanded((e) => !e)}
-                className="text-xs text-primary hover:underline"
+                className="text-xs text-primary underline transition hover:opacity-70"
               >
                 {expanded ? 'Hide details' : 'Show details'}
               </button>
@@ -103,7 +103,7 @@ export function ChatTurn({ turn }: { turn: TurnDetail }) {
               <button
                 type="button"
                 onClick={() => setExpanded((e) => !e)}
-                className="text-xs text-primary hover:underline"
+                className="text-xs text-primary underline transition hover:opacity-70"
               >
                 {expanded ? 'Hide details' : 'Show details'}
               </button>

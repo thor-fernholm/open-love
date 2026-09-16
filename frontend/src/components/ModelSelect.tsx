@@ -14,7 +14,7 @@ const OLLAMA_PREFIX = 'ollama:';
 const DEFAULT_CLAUDE_MODEL = 'haiku';
 
 const DEFAULT_CLASS =
-  'rounded-md border border-hairline bg-canvas px-2 py-1.5 text-sm text-ink outline-none focus:border-primary disabled:opacity-60';
+  'rounded-sm border border-hairline bg-canvas px-2 py-1.5 text-sm text-ink outline-none focus:border-primary focus:ring-2 focus:ring-ring/50 disabled:opacity-60';
 
 interface ModelSelectProps {
   value: AgentSelection;
