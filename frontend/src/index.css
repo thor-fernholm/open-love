@@ -16,8 +16,13 @@
 @theme {
   --color-primary: #3363e6;
   --color-primary-disabled: #e6dfd8;
-  /* The gradient's warm end (chat bubble, alongside --color-primary) and a
-     general-purpose warm accent elsewhere - Lovable's orange-red half. */
+  /* A brighter, more saturated blue than --color-primary, just for the
+     user's own chat bubble - that one surface is allowed a bit more energy
+     than the calmer blue used on buttons/links throughout the rest of the
+     UI. */
+  --color-chat-bubble: #2563ff;
+  /* The New-project button's gradient warm end, and a general-purpose warm
+     accent elsewhere - Lovable's orange-red half. */
   --color-accent-warm: #e8543c;
   --color-ink: #1c1c1c;
   --color-body: #3d3a35;

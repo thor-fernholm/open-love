@@ -95,7 +95,7 @@ export function Sidebar({ collapsed, onToggleCollapsed, refreshKey }: SidebarPro
       <button
         type="button"
         onClick={() => navigate('/')}
-        className="mx-3 mb-3 flex items-center justify-center gap-1.5 rounded-sm bg-primary px-3 py-2 text-sm font-medium text-on-primary shadow-button-inset transition hover:opacity-80"
+        className="mx-3 mb-3 flex items-center justify-center gap-1.5 rounded-sm bg-gradient-to-br from-primary to-accent-warm px-3 py-2 text-sm font-medium text-on-primary shadow-button-inset transition hover:opacity-80"
       >
         <span className="text-base leading-none">+</span> New project
       </button>
