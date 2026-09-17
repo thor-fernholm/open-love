@@ -34,6 +34,16 @@ export function getGeneratedProjectsRoot(): string {
   );
 }
 
+/** The repo-root `templates/advanced-starter` folder a new 'dynamic'
+ *  project is seeded from (copied wholesale, not built from a blank folder
+ *  like a 'static' one) - see ProjectGeneratorService.createProject. */
+export function getAdvancedStarterDir(): string {
+  return (
+    process.env.ADVANCED_STARTER_DIR ??
+    resolve(process.cwd(), '..', 'templates', 'advanced-starter')
+  );
+}
+
 /** Defense in depth beyond DTO-level regexes: never let an id escape the
  *  generated-projects root when used to build a filesystem path. Shared by
  *  every feature that touches a project's files by id. */
@@ -180,18 +190,23 @@ export function listProjectIds(): string[] {
     .map((entry) => entry.name);
 }
 
+// Never part of "the project" the agent, or an export, should see/ship:
+// .openlove is this app's own metadata; node_modules/.next are regenerated
+// by `npm install`/`npm run build` on a dynamic project and would otherwise
+// bloat every export zip for no reason.
+const SKIP_DIR_NAMES = new Set(['.openlove', 'node_modules', '.next']);
+
 /** Every file under `root` (recursive, forward-slash-normalized relative
- *  paths), skipping `.openlove/` - this app's own metadata, never part of
- *  the generated site itself. Shared by the agent's own `list_files` tool
- *  (agent/tools.ts) and project export (project-generator.service.ts), so
- *  both see exactly the same "what's actually in this project" view. */
+ *  paths), skipping SKIP_DIR_NAMES. Shared by the agent's own `list_files`
+ *  tool (agent/tools.ts) and project export (project-generator.service.ts),
+ *  so both see exactly the same "what's actually in this project" view. */
 export function listDirRecursive(root: string, relDir: string): string[] {
   const abs = join(root, relDir);
   if (!existsSync(abs)) return [];
   const entries = readdirSync(abs, { withFileTypes: true });
   const results: string[] = [];
   for (const entry of entries) {
-    if (entry.name === '.openlove') continue;
+    if (SKIP_DIR_NAMES.has(entry.name)) continue;
     const relPath = relDir === '.' ? entry.name : join(relDir, entry.name);
     if (entry.isDirectory()) {
       results.push(...listDirRecursive(root, relPath));

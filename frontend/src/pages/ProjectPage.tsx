@@ -7,12 +7,15 @@ import { getContent } from '../lib/content';
 import {
   cancelGeneration,
   exportUrl,
+  getPreviewStatus,
   getProject,
   previewUrl,
   renameProject,
   startGeneration,
   streamUrl,
   type AgentOutputEvent,
+  type PreviewState,
+  type SiteType,
   type TurnDetail,
   type TurnStatus,
 } from '../lib/projects';
@@ -25,6 +28,38 @@ const STATUS_STYLES: Record<GenerationStatus, string> = {
   error: 'bg-error/10 text-error',
   cancelled: 'bg-surface-card text-muted',
 };
+
+const PREVIEW_STATUS_LABEL: Record<PreviewState['status'], string> = {
+  idle: '',
+  installing: 'Installing…',
+  generating: 'Preparing DB…',
+  building: 'Building…',
+  starting: 'Starting…',
+  ready: 'Ready',
+  failed: 'Preview failed',
+};
+
+const DEPLOY_PENDING_STATUSES = new Set<PreviewState['status']>([
+  'installing',
+  'generating',
+  'building',
+  'starting',
+]);
+
+const SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+
+/** A compact version of GeneratingIndicator's braille spinner - just the
+ *  glyph, no verb/elapsed-time, for a small inline status badge rather than
+ *  a full "working on it" line. */
+function useSpinnerFrame(active: boolean): string {
+  const [frame, setFrame] = useState(0);
+  useEffect(() => {
+    if (!active) return;
+    const id = setInterval(() => setFrame((f) => (f + 1) % SPINNER_FRAMES.length), 90);
+    return () => clearInterval(id);
+  }, [active]);
+  return SPINNER_FRAMES[frame];
+}
 
 function statusFromTurns(turns: TurnDetail[]): GenerationStatus {
   const last = turns[turns.length - 1];
@@ -54,6 +89,10 @@ export function ProjectPage({ onProjectsChanged }: ProjectPageProps) {
   const [prompt, setPrompt] = useState('');
   const [attachments, setAttachments] = useState<File[]>([]);
   const [selection, setSelection] = useState<AgentSelection>({ provider: 'claude' });
+  // Only meaningful in "new" mode - once a project exists its site type is
+  // fixed (read back from getProject() below instead).
+  const [siteType, setSiteType] = useState<SiteType>('static');
+  const [previewState, setPreviewState] = useState<PreviewState>({ status: 'idle' });
   const [jobId, setJobId] = useState<string | null>(null);
   const [turns, setTurns] = useState<TurnDetail[]>([]);
   const [loading, setLoading] = useState(Boolean(id));
@@ -150,6 +189,7 @@ export function ProjectPage({ onProjectsChanged }: ProjectPageProps) {
       .then((project) => {
         if (cancelled) return;
         setProjectName(project.name);
+        setSiteType(project.siteType ?? 'static');
         setTurns(project.turns);
         const lastTurn = project.turns[project.turns.length - 1];
         if (lastTurn) {
@@ -201,6 +241,30 @@ export function ProjectPage({ onProjectsChanged }: ProjectPageProps) {
     };
   }, [id]);
 
+  // Polls the live preview's status for a 'dynamic' project - continuously
+  // (not just until first 'ready') since a follow-up turn restarts the
+  // preview process, cycling status back through installing/building/etc.
+  // Cheap enough as a plain interval for a single-user local tool.
+  useEffect(() => {
+    if (!id || siteType !== 'dynamic') return;
+    let cancelled = false;
+    const poll = () => {
+      getPreviewStatus(id)
+        .then((state) => {
+          if (!cancelled) setPreviewState(state);
+        })
+        .catch(() => {
+          // Transient - keep whatever state was last known, try again next tick.
+        });
+    };
+    poll();
+    const intervalId = setInterval(poll, 2000);
+    return () => {
+      cancelled = true;
+      clearInterval(intervalId);
+    };
+  }, [id, siteType]);
+
   // A brand-new project has no turn history to inherit a selection from -
   // start from the persisted global default instead.
   useEffect(() => {
@@ -230,7 +294,7 @@ export function ProjectPage({ onProjectsChanged }: ProjectPageProps) {
       try {
         const { projectId } = await startGeneration(
           trimmedPrompt,
-          { name: trimmedName },
+          { name: trimmedName, siteType },
           attachments,
           selection,
         );
@@ -321,8 +385,23 @@ export function ProjectPage({ onProjectsChanged }: ProjectPageProps) {
   const mode: 'new' | 'existing' = id ? 'existing' : 'new';
   const status: GenerationStatus =
     starting || sending ? 'running' : statusFromTurns(turns);
-  const canOpenWebsite = Boolean(id) && !loading && status !== 'running';
-  const canEditContent = Boolean(id) && !loading && hasContent === true;
+  const loaded = Boolean(id) && !loading;
+  const turnRunning = status === 'running';
+
+  // A static site has nothing to wait on once its turn finishes - it's
+  // viewable immediately. A dynamic app additionally needs its own live
+  // process to finish installing/building/starting (see
+  // dynamic-preview.service.ts), tracked separately in previewState.
+  const isReady =
+    siteType === 'dynamic' ? previewState.status === 'ready' : loaded && !turnRunning;
+  const isDeploying =
+    loaded &&
+    (turnRunning || (siteType === 'dynamic' && DEPLOY_PENDING_STATUSES.has(previewState.status)));
+  const deployFailed = loaded && !turnRunning && siteType === 'dynamic' && previewState.status === 'failed';
+  const deployLabel = turnRunning ? 'Generating…' : PREVIEW_STATUS_LABEL[previewState.status];
+  const spinnerFrame = useSpinnerFrame(isDeploying);
+
+  const canEditContent = isReady && hasContent === true;
 
   return (
     <div className="flex h-full flex-col">
@@ -366,32 +445,52 @@ export function ProjectPage({ onProjectsChanged }: ProjectPageProps) {
 
         {id && (
           <div className="flex flex-shrink-0 items-center gap-2">
-            <button
-              type="button"
-              disabled={!canEditContent}
-              onClick={() => navigate(`/projects/${id}/content`)}
-              className="rounded-sm border border-hairline-strong px-4 py-2 text-sm font-medium text-ink transition hover:bg-ink/5 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              Edit content
-            </button>
-            <button
-              type="button"
-              disabled={!canOpenWebsite}
-              onClick={() =>
-                window.open(previewUrl(id), '_blank', 'noopener,noreferrer')
-              }
-              className="rounded-sm border border-primary px-4 py-2 text-sm font-medium text-primary transition hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              Open preview ↗
-            </button>
-            <button
-              type="button"
-              disabled={!canOpenWebsite}
-              onClick={() => setExportModalOpen(true)}
-              className="rounded-sm border border-accent-warm px-4 py-2 text-sm font-medium text-accent-warm transition hover:bg-accent-warm/10 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              Export website ⬇
-            </button>
+            {isDeploying && (
+              <span className="flex items-center gap-2 rounded-full bg-accent-amber/20 px-3 py-1 text-sm font-medium text-body-strong">
+                <span className="font-mono text-primary">{spinnerFrame}</span>
+                {deployLabel}
+              </span>
+            )}
+            {deployFailed && (
+              <span
+                title={previewState.message}
+                className="rounded-full bg-error/10 px-3 py-1 text-sm font-medium text-error"
+              >
+                {PREVIEW_STATUS_LABEL.failed}
+              </span>
+            )}
+            {isReady && (
+              <>
+                <span className="rounded-full bg-success/15 px-3 py-1 text-sm font-medium text-success">
+                  Ready
+                </span>
+                {canEditContent && (
+                  <button
+                    type="button"
+                    onClick={() => navigate(`/projects/${id}/content`)}
+                    className="rounded-sm border border-hairline-strong px-4 py-2 text-sm font-medium text-ink transition hover:bg-ink/5"
+                  >
+                    Edit content
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() =>
+                    window.open(previewUrl(id), '_blank', 'noopener,noreferrer')
+                  }
+                  className="rounded-sm border border-primary px-4 py-2 text-sm font-medium text-primary transition hover:bg-primary/10"
+                >
+                  Open preview ↗
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setExportModalOpen(true)}
+                  className="rounded-sm border border-accent-warm px-4 py-2 text-sm font-medium text-accent-warm transition hover:bg-accent-warm/10"
+                >
+                  Export website ⬇
+                </button>
+              </>
+            )}
           </div>
         )}
       </header>
@@ -431,6 +530,8 @@ export function ProjectPage({ onProjectsChanged }: ProjectPageProps) {
           onAttachmentsChange={setAttachments}
           selection={selection}
           onSelectionChange={setSelection}
+          siteType={siteType}
+          onSiteTypeChange={setSiteType}
           onGenerate={handleGenerate}
           onCancel={handleCancel}
         />
@@ -439,6 +540,7 @@ export function ProjectPage({ onProjectsChanged }: ProjectPageProps) {
       {id && (
         <ExportModal
           open={exportModalOpen}
+          siteType={siteType}
           onClose={() => setExportModalOpen(false)}
           onConfirm={() => {
             window.open(exportUrl(id), '_blank');

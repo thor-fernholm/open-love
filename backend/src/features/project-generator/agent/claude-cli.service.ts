@@ -27,7 +27,11 @@ export const DEFAULT_CLAUDE_MODEL = 'haiku';
 export class ClaudeCliService implements IAgentService {
   run(request: AgentRunRequest): AgentProcessHandle {
     const output$ = new Subject<AgentOutputEvent>();
-    const prompt = buildClaudePrompt(request.userPrompt, request.attachments);
+    const prompt = buildClaudePrompt(
+      request.userPrompt,
+      request.attachments,
+      request.siteType,
+    );
 
     // cross-spawn resolves npm-installed `.cmd`/`.bat` shims on Windows
     // (which Node's own child_process.spawn can't launch without a shell)
@@ -40,8 +44,18 @@ export class ClaudeCliService implements IAgentService {
       [
         '-p',
         prompt,
+        // 'acceptEdits' auto-accepts file writes but NOT Bash tool calls -
+        // in non-interactive mode (-p, no TTY) there's no way to approve
+        // one, so the CLI just gives up ("I'll pause here rather than
+        // keep retrying...") the moment it wants to run a shell command,
+        // e.g. `npm install`/`prisma generate` to sanity-check its own
+        // work on a dynamic project. This app already lets the agent
+        // freely read/write any file in the project folder - extending
+        // that same trust to shell commands is consistent with the
+        // existing model, not a new category of risk, and dynamic
+        // projects need it far more than static ones ever did.
         '--permission-mode',
-        'acceptEdits',
+        'bypassPermissions',
         '--model',
         request.model ?? DEFAULT_CLAUDE_MODEL,
       ],

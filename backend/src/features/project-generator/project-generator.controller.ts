@@ -17,6 +17,7 @@ import { FilesInterceptor } from '@nestjs/platform-express';
 import { map, Observable } from 'rxjs';
 import { GenerateProjectDto } from './dto/generate-project.dto';
 import { RenameProjectDto } from './dto/rename-project.dto';
+import type { PreviewState } from './dynamic-preview.service';
 import { ProjectGeneratorService } from './project-generator.service';
 import type { ProjectDetail, ProjectSummary } from './project.types';
 
@@ -48,6 +49,14 @@ export class ProjectGeneratorController {
   @Get('projects/:id/export')
   exportProject(@Param('id') id: string): StreamableFile {
     return this.projectGenerator.exportProject(id);
+  }
+
+  /** Polled by the frontend while a 'dynamic' project's live preview is
+   *  coming up (installing/generating/building/starting) - see
+   *  dynamic-preview.service.ts. Always 'idle' for a 'static' project. */
+  @Get('projects/:id/preview-status')
+  getPreviewStatus(@Param('id') id: string): PreviewState {
+    return this.projectGenerator.getPreviewStatus(id);
   }
 
   @Patch('projects/:id')

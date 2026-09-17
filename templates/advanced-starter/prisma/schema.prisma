@@ -1,0 +1,17 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// One example model, wired up end-to-end (see app/page.tsx and
+// app/api/items/route.ts) - add more models here following the same shape,
+// then run `npx prisma db push` to sync the SQLite file.
+model Item {
+  id        Int      @id @default(autoincrement())
+  title     String
+  createdAt DateTime @default(now())
+}

@@ -69,7 +69,7 @@ export class SdkAgentService implements IAgentService {
 
     const tools = createAgentTools(request.cwd);
     const toolNames = Object.keys(tools);
-    const instructions = `${buildConventions(request.attachments)}\n\n${TOOL_USE_INSTRUCTIONS}`;
+    const instructions = `${buildConventions(request.attachments, request.siteType)}\n\n${TOOL_USE_INSTRUCTIONS}`;
 
     const agent = new ToolLoopAgent({
       // A lower temperature than Ollama's default (0.8) makes tool-calling

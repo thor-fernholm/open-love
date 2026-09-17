@@ -21,6 +21,10 @@ interface ModelSelectProps {
   onChange: (selection: AgentSelection) => void;
   disabled?: boolean;
   className?: string;
+  /** Advanced (dynamic) projects are Claude Code only for now - hides the
+   *  Ollama optgroup entirely and coerces an Ollama selection back to
+   *  Claude Code rather than leaving a stale, now-invalid choice in place. */
+  claudeOnly?: boolean;
 }
 
 /**
@@ -29,7 +33,13 @@ interface ModelSelectProps {
  * where. Shared by the settings popup (sets the global default) and the
  * chat's per-message override, so both controls stay identical.
  */
-export function ModelSelect({ value, onChange, disabled, className }: ModelSelectProps) {
+export function ModelSelect({
+  value,
+  onChange,
+  disabled,
+  className,
+  claudeOnly,
+}: ModelSelectProps) {
   const [models, setModels] = useState<OllamaModelInfo[]>([]);
   const [ollamaAvailable, setOllamaAvailable] = useState(true);
 
@@ -48,6 +58,12 @@ export function ModelSelect({ value, onChange, disabled, className }: ModelSelec
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    if (claudeOnly && value.provider === 'ollama') {
+      onChange({ provider: 'claude' });
+    }
+  }, [claudeOnly, value.provider, onChange]);
 
   const selectValue =
     value.provider === 'ollama' && value.model
@@ -76,20 +92,21 @@ export function ModelSelect({ value, onChange, disabled, className }: ModelSelec
           </option>
         ))}
       </optgroup>
-      {models.length === 0 && !ollamaAvailable ? (
-        <option value="" disabled>
-          Ollama not detected
-        </option>
-      ) : (
-        <optgroup label="Ollama">
-          {models.map((model) => (
-            <option key={model.name} value={`${OLLAMA_PREFIX}${model.name}`}>
-              {model.name}
-              {model.supportsTools === false ? ' (no tool support)' : ''}
-            </option>
-          ))}
-        </optgroup>
-      )}
+      {!claudeOnly &&
+        (models.length === 0 && !ollamaAvailable ? (
+          <option value="" disabled>
+            Ollama not detected
+          </option>
+        ) : (
+          <optgroup label="Ollama">
+            {models.map((model) => (
+              <option key={model.name} value={`${OLLAMA_PREFIX}${model.name}`}>
+                {model.name}
+                {model.supportsTools === false ? ' (no tool support)' : ''}
+              </option>
+            ))}
+          </optgroup>
+        ))}
     </select>
   );
 }

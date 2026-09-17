@@ -1,29 +1,45 @@
 import { readActiveDesignGuide } from './design-guide';
-import type { TurnAttachment } from '../project.types';
+import { readActiveStackGuide } from './stack-guide';
+import type { SiteType, TurnAttachment } from '../project.types';
 
 /**
- * Every new project starts from a blank folder (see
+ * Two generation modes, each with its own conventions:
+ *
+ * 'static' - every new project starts from a blank folder (see
  * ProjectGeneratorService.createProject) - there is no template to copy
- * and edit anymore, since a fixed portfolio shape doesn't fit arbitrary
- * requests. Everything that used to live in a template is encoded here as
+ * and edit, since a fixed portfolio shape doesn't fit arbitrary requests.
+ * Everything that used to live in a template is encoded here as
  * instructions instead: the static-site tech constraint, a design
  * reference read live from designs/ (see design-guide.ts), a placeholder-
  * image rule, and an optional content-manifest convention that lets a
  * project declare editable content (see features/project-content) only
  * when it actually has content worth editing later.
  *
- * These conventions are shared by every agent strategy (ClaudeCliService,
- * SdkAgentService, and whatever vendor plugs in after that) - only how
- * each strategy actually gets the model to act on them differs (a CLI
- * prompt argument vs. a system prompt for a tool-use loop).
+ * 'dynamic' - a project starts from a real, working Next.js + Prisma +
+ * SQLite scaffold (templates/advanced-starter/, copied in by
+ * ProjectGeneratorService.createProject) - the agent extends that scaffold
+ * per the stack guide (stacks/, see stack-guide.ts) rather than inventing
+ * its own boilerplate. The static-only content-manifest convention doesn't
+ * apply here; a dynamic app manages its own data through Prisma.
+ *
+ * Both share the design-language and attachments sections. These
+ * conventions are shared by every agent strategy (ClaudeCliService,
+ * SdkAgentService) - only how each strategy actually gets the model to act
+ * on them differs (a CLI prompt argument vs. a system prompt for a
+ * tool-use loop). Ollama only ever sees 'static' - see
+ * ProjectGeneratorService.resolveSelection's provider/siteType guard.
  */
-const INSTRUCTIONS_HEAD = `You are building a small website in this directory, based on the request below. Build whatever the request actually calls for - a landing page, a tool, a game, a blog, a business site, an invite page, anything - don't assume it's a portfolio or any other fixed shape.
+const STATIC_INSTRUCTIONS_HEAD = `You are building a small website in this directory, based on the request below. Build whatever the request actually calls for - a landing page, a tool, a game, a blog, a business site, an invite page, anything - don't assume it's a portfolio or any other fixed shape.
 
 Tech constraint (always applies): plain static HTML/CSS/JS only - no build step, no bundler, no framework, no server-side code. The site must work by opening index.html directly, and must also work when served from a nested URL path, so use only relative asset/link paths (e.g. "styles.css", not "/styles.css").
 
-Images: never generate real image bytes, invent a specific photo, or link to a stock-photo site (including Unsplash) - those links are frequently dead/invalid and there's no way to verify one actually loads. Instead, for every image the site needs - decorative or content-backed - use a real photo from Lorem Picsum's seeded URL form, which always returns the same photo for a given seed (deterministic, no API key, no network fragility, and free to construct - no search or extra tool calls needed):
-  https://picsum.photos/seed/<slug>/<width>/<height>
-Pick a distinct <slug> per image (e.g. "hero", "team-1", "product-3") and size it to the space it fills. Use this directly as a real <img src="..."> (or CSS background-image) - not a gradient placeholder standing in for one. The user can later replace it with their own photo through the content editor's upload feature (see the content convention below), which overwrites that same URL - there's no separate "no image yet" state to render.`;
+${imagesRule()}`;
+
+const DYNAMIC_INSTRUCTIONS_HEAD = `You are building a small full-stack app in this directory, based on the request below. This directory already contains a working Next.js + Prisma + SQLite starter - call list_files (and read_file the key files: app/page.tsx, prisma/schema.prisma, app/api/items/route.ts, lib/prisma.ts) before you start, so you extend what's there rather than rebuilding it or guessing at its shape.
+
+Follow the stack guide below for conventions (where pages/routes/data access go, the Prisma workflow, what NOT to add). Build whatever the request actually calls for - don't assume it's the starter's own example "Item" list unless the request is actually that.
+
+${imagesRule()}`;
 
 const CONTENT_CONVENTION = `Editable content - optional, set this up ONLY if the site actually has content that benefits from being editable later without regenerating (e.g. a list of products/projects/posts/testimonials/team members/FAQ/schedule items, or site-wide text like a title/bio). Skip this entirely for a page that doesn't need it (e.g. a single tool or game) - just build static HTML with the content baked in.
 
@@ -45,6 +61,12 @@ When it is needed:
 - Create one content/<name>.json per manifest entry: an array of records for a "list" collection, or a single object for a "singleton" collection, matching that entry's fields, filled in with real content per the request below.
 - Your site's own JS must fetch() these files at runtime (relative paths, e.g. fetch('content/products.json')) and render them into the page - don't also hardcode the same content directly into the HTML.`;
 
+function imagesRule(): string {
+  return `Images: never generate real image bytes, invent a specific photo, or link to a stock-photo site (including Unsplash) - those links are frequently dead/invalid and there's no way to verify one actually loads. Instead, for every image the site needs - decorative or content-backed - use a real photo from Lorem Picsum's seeded URL form, which always returns the same photo for a given seed (deterministic, no API key, no network fragility, and free to construct - no search or extra tool calls needed):
+  https://picsum.photos/seed/<slug>/<width>/<height>
+Pick a distinct <slug> per image (e.g. "hero", "team-1", "product-3") and size it to the space it fills. Use this directly as a real <img src="..."> (or CSS background-image) - not a gradient placeholder standing in for one.`;
+}
+
 function buildDesignSection(): string {
   const guide = readActiveDesignGuide();
   if (!guide) {
@@ -57,6 +79,16 @@ ${guide}
 --- End of design system ---`;
 }
 
+function buildStackSection(): string {
+  const guide = readActiveStackGuide();
+  if (!guide) {
+    return 'Stack guide: no specific reference is available - use the starter scaffold already in this directory as your guide.';
+  }
+  return `--- Stack guide to follow ---
+${guide}
+--- End of stack guide ---`;
+}
+
 function buildAttachmentsSection(attachments: TurnAttachment[]): string | null {
   if (attachments.length === 0) return null;
   const list = attachments
@@ -66,16 +98,18 @@ function buildAttachmentsSection(attachments: TurnAttachment[]): string | null {
 }
 
 /** The shared rules every agent strategy builds its own final prompt
- *  around - tech constraint, design language, content convention, and
- *  any attached reference files. Provider-specific instructions (how to
+ *  around - tech constraint (static or dynamic), design language, and any
+ *  attached reference files. Provider-specific instructions (how to
  *  actually make edits) are layered on top of this by each strategy. */
-export function buildConventions(attachments: TurnAttachment[] = []): string {
-  return [
-    INSTRUCTIONS_HEAD,
-    buildDesignSection(),
-    CONTENT_CONVENTION,
-    buildAttachmentsSection(attachments),
-  ]
+export function buildConventions(
+  attachments: TurnAttachment[] = [],
+  siteType: SiteType = 'static',
+): string {
+  const sections =
+    siteType === 'dynamic'
+      ? [DYNAMIC_INSTRUCTIONS_HEAD, buildStackSection(), buildDesignSection()]
+      : [STATIC_INSTRUCTIONS_HEAD, buildDesignSection(), CONTENT_CONVENTION];
+  return [...sections, buildAttachmentsSection(attachments)]
     .filter((section): section is string => Boolean(section))
     .join('\n\n');
 }
@@ -86,6 +120,7 @@ export function buildConventions(attachments: TurnAttachment[] = []): string {
 export function buildClaudePrompt(
   userPrompt: string,
   attachments: TurnAttachment[] = [],
+  siteType: SiteType = 'static',
 ): string {
-  return `${buildConventions(attachments)}\n\nUser's request:\n${userPrompt}`;
+  return `${buildConventions(attachments, siteType)}\n\nUser's request:\n${userPrompt}`;
 }

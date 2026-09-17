@@ -1,13 +1,24 @@
+import type { SiteType } from '../lib/projects';
+
 interface ExportModalProps {
   open: boolean;
+  siteType: SiteType;
   onClose: () => void;
   onConfirm: () => void;
 }
 
+const COPY: Record<SiteType, string> = {
+  static:
+    "Downloads a zip of the site's own files - plain HTML/CSS/JS, no server or build step required. Unzip it and host it free on Netlify, Cloudflare Pages, GitHub Pages, Vercel, or Surge.sh - or anywhere else that serves static files.",
+  dynamic:
+    "Downloads a zip of the app's own files (Next.js + Prisma + SQLite) - node_modules and build output are left out, so run npm install once you've unzipped it. It's a standard Next.js app: npm run build && npm start runs it anywhere Node.js runs (a VPS, Railway, Render, Fly.io), or deploy it to Vercel with zero configuration.",
+};
+
 /** Shown when "Export website" is clicked - explains what the download
- *  actually is (a plain static site, no server needed) before handing the
- *  zip over, since that's the whole reason it's easy to host anywhere. */
-export function ExportModal({ open, onClose, onConfirm }: ExportModalProps) {
+ *  actually is before handing the zip over, since what makes it easy to
+ *  host differs by site type (drag-and-drop static hosting vs. a real
+ *  Node deploy). */
+export function ExportModal({ open, siteType, onClose, onConfirm }: ExportModalProps) {
   if (!open) return null;
 
   return (
@@ -22,12 +33,7 @@ export function ExportModal({ open, onClose, onConfirm }: ExportModalProps) {
         <h2 className="font-display text-xl tracking-tight text-ink">
           Export website
         </h2>
-        <p className="mb-4 mt-1 text-sm text-muted">
-          Downloads a zip of the site's own files - plain HTML/CSS/JS, no
-          server or build step required. Unzip it and host it free on
-          Netlify, Cloudflare Pages, GitHub Pages, Vercel, or Surge.sh - or
-          anywhere else that serves static files.
-        </p>
+        <p className="mb-4 mt-1 text-sm text-muted">{COPY[siteType]}</p>
 
         <div className="flex justify-end gap-2">
           <button

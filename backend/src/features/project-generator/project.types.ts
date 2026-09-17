@@ -8,6 +8,15 @@ export type TurnStatus = 'running' | 'completed' | 'failed' | 'cancelled';
  *  plug in the same way later. */
 export type AgentProvider = 'claude' | 'ollama';
 
+/** 'static' is the original plain HTML/CSS/JS generator; 'dynamic' scaffolds
+ *  a Next.js + Prisma + SQLite app from templates/advanced-starter/ and
+ *  runs it as a live process for preview (see dynamic-preview.service.ts).
+ *  Set once at project creation and immutable after - a follow-up turn
+ *  always uses the project's own stored value, never a per-message
+ *  override like provider/model. Ollama can't build 'dynamic' projects
+ *  (see ProjectGeneratorService.resolveSelection). */
+export type SiteType = 'static' | 'dynamic';
+
 export interface AgentSelection {
   provider: AgentProvider;
   /** Which local model for 'ollama' (required in practice - nothing runs
@@ -52,6 +61,9 @@ export interface ProjectMeta {
   id: string;
   name: string;
   createdAt: string;
+  /** Absent on projects created before this existed - treated as 'static'
+   *  (see ProjectGeneratorService.legacyMeta/readMeta callers). */
+  siteType?: SiteType;
 }
 
 export type ProjectSummary = ProjectMeta;

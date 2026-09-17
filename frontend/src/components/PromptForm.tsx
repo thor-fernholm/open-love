@@ -1,5 +1,7 @@
 import { FileButton } from './FileButton';
 import { ModelSelect } from './ModelSelect';
+import { SiteTypeToggle } from './SiteTypeToggle';
+import type { SiteType } from '../lib/projects';
 import type { AgentSelection } from '../lib/settings';
 
 export type GenerationStatus =
@@ -24,6 +26,10 @@ interface PromptFormProps {
   onAttachmentsChange: (files: File[]) => void;
   selection: AgentSelection;
   onSelectionChange: (selection: AgentSelection) => void;
+  /** Only meaningful in "new" mode - an existing project's site type is
+   *  fixed, so these are unused (and the toggle hidden) once one exists. */
+  siteType: SiteType;
+  onSiteTypeChange: (value: SiteType) => void;
   onGenerate: () => void;
   onCancel: () => void;
 }
@@ -39,6 +45,8 @@ export function PromptForm({
   onAttachmentsChange,
   selection,
   onSelectionChange,
+  siteType,
+  onSiteTypeChange,
   onGenerate,
   onCancel,
 }: PromptFormProps) {
@@ -75,19 +83,30 @@ export function PromptForm({
             placeholder="e.g. Personal portfolio site"
             className="w-full rounded-sm border border-hairline bg-canvas px-3 py-2 text-sm text-ink shadow-sm outline-none focus:border-primary focus:ring-2 focus:ring-ring/50 disabled:opacity-60"
           />
+          <SiteTypeToggle
+            value={siteType}
+            onChange={onSiteTypeChange}
+            disabled={running}
+          />
         </div>
       )}
 
       <div className="flex flex-col gap-1.5">
-        <label htmlFor="prompt" className="text-xs font-medium text-muted">
-          {mode === 'new' ? 'What should it build?' : 'Follow-up prompt'}
-        </label>
+        {mode === 'new' && (
+          <label htmlFor="prompt" className="text-xs font-medium text-muted">
+            What should it build?
+          </label>
+        )}
         <textarea
           id="prompt"
           value={prompt}
           onChange={(e) => onPromptChange(e.target.value)}
           disabled={running}
-          placeholder="Describe the project you want to generate…"
+          placeholder={
+            mode === 'new'
+              ? 'Describe the project you want to generate…'
+              : 'Describe what you’d like to improve, fix, or add next…'
+          }
           rows={4}
           className="w-full resize-none rounded-sm border border-hairline bg-canvas p-3 text-sm text-ink shadow-sm outline-none focus:border-primary focus:ring-2 focus:ring-ring/50 disabled:opacity-60"
         />
@@ -136,7 +155,12 @@ export function PromptForm({
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <ModelSelect value={selection} onChange={onSelectionChange} disabled={running} />
+          <ModelSelect
+            value={selection}
+            onChange={onSelectionChange}
+            disabled={running}
+            claudeOnly={siteType === 'dynamic'}
+          />
           <FileButton
             accept={ATTACHMENT_ACCEPT}
             multiple

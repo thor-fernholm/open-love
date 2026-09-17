@@ -11,6 +11,26 @@ export type AgentOutputEvent =
 
 export type TurnStatus = 'running' | 'completed' | 'failed' | 'cancelled';
 
+/** 'static' is the original plain HTML/CSS/JS generator; 'dynamic' scaffolds
+ *  a Next.js + Prisma + SQLite app and runs it as a live process for
+ *  preview. Fixed at project creation - see SiteTypeToggle. */
+export type SiteType = 'static' | 'dynamic';
+
+export type PreviewStatus =
+  | 'idle'
+  | 'installing'
+  | 'generating'
+  | 'building'
+  | 'starting'
+  | 'ready'
+  | 'failed';
+
+export interface PreviewState {
+  status: PreviewStatus;
+  port?: number;
+  message?: string;
+}
+
 /** A reference file attached to a prompt - see TurnDetail. */
 export interface TurnAttachment {
   name: string;
@@ -35,6 +55,8 @@ export interface ProjectSummary {
   id: string;
   name: string;
   createdAt: string;
+  /** Absent on projects created before this existed - treat as 'static'. */
+  siteType?: SiteType;
 }
 
 export interface ProjectDetail extends ProjectSummary {
@@ -71,18 +93,20 @@ export async function getProject(id: string): Promise<ProjectDetail> {
  * Starts a generation: pass `{ name }` to create a brand-new project, or
  * `{ projectId }` to send a follow-up prompt into an existing one. Always
  * sent as multipart (even with no files) so the endpoint's shape stays
- * uniform regardless of whether anything is attached.
+ * uniform regardless of whether anything is attached. `siteType` is only
+ * meaningful (and only ever sent) when creating a new project - an existing
+ * project's site type is fixed and the backend ignores it on a follow-up.
  */
 export async function startGeneration(
   prompt: string,
-  target: { name: string } | { projectId: string },
+  target: { name: string; siteType?: SiteType } | { projectId: string },
   attachments: File[] = [],
   selection?: AgentSelection,
 ): Promise<{ jobId: string; projectId: string }> {
   const form = new FormData();
   form.append('prompt', prompt);
   for (const [key, value] of Object.entries(target)) {
-    form.append(key, value);
+    if (value !== undefined) form.append(key, value);
   }
   for (const file of attachments) {
     form.append('files', file);
@@ -141,4 +165,13 @@ export function previewUrl(projectId: string): string {
  *  Content-Disposition: attachment so navigating to it just downloads. */
 export function exportUrl(projectId: string): string {
   return `${API_BASE}/project-generator/projects/${projectId}/export`;
+}
+
+/** Polled while a 'dynamic' project's live preview is coming up (see
+ *  PreviewStatus) - always `{ status: 'idle' }` for a 'static' project. */
+export async function getPreviewStatus(projectId: string): Promise<PreviewState> {
+  const res = await fetch(
+    `${API_BASE}/project-generator/projects/${projectId}/preview-status`,
+  );
+  return parseOrThrow(res, 'Loading preview status');
 }

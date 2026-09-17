@@ -1,22 +1,25 @@
 import {
   BadRequestException,
   Injectable,
+  Logger,
   NotFoundException,
   StreamableFile,
 } from '@nestjs/common';
 import archiver from 'archiver';
 import { randomUUID } from 'crypto';
-import { existsSync, mkdirSync, rmSync, statSync, writeFileSync } from 'fs';
+import { cpSync, existsSync, mkdirSync, rmSync, statSync, writeFileSync } from 'fs';
 import { extname, join } from 'path';
 import { Observable, Subject } from 'rxjs';
 import { AgentServiceRegistry } from './agent/agent-registry.service';
 import { AgentOutputEvent, AgentProcessHandle } from './agent/agent-service.interface';
 import { SettingsService } from '../settings/settings.service';
+import { DynamicPreviewService, PreviewState } from './dynamic-preview.service';
 import { GenerateProjectDto } from './dto/generate-project.dto';
 import {
   appendTurn,
   appendTurnEvent,
   assertSafeId,
+  getAdvancedStarterDir,
   getProjectDir,
   listDirRecursive,
   listProjectIds,
@@ -31,7 +34,9 @@ import {
   AgentSelection,
   ProjectDetail,
   ProjectSummary,
+  SiteType,
   TurnAttachment,
+  TurnDetail,
 } from './project.types';
 
 const ATTACHMENT_EXTENSIONS = new Set([
@@ -74,6 +79,8 @@ interface Job {
 
 @Injectable()
 export class ProjectGeneratorService {
+  private readonly logger = new Logger(ProjectGeneratorService.name);
+
   /** Running/finished jobs this process has seen - not persisted, since a
    *  job is just one in-flight CLI invocation; project state itself lives
    *  on disk via project-store so it survives a restart. */
@@ -82,17 +89,28 @@ export class ProjectGeneratorService {
   constructor(
     private readonly agentRegistry: AgentServiceRegistry,
     private readonly settings: SettingsService,
+    private readonly dynamicPreview: DynamicPreviewService,
   ) {}
 
   start(
     dto: GenerateProjectDto,
     files: Express.Multer.File[] = [],
   ): { jobId: string; projectId: string } {
-    const { projectId, projectPath } = dto.projectId
-      ? this.resolveExistingProject(dto.projectId)
-      : this.createProject(dto.name);
+    const siteType: SiteType = dto.projectId
+      ? this.getSiteType(dto.projectId)
+      : dto.siteType ?? 'static';
 
     const selection = this.resolveSelection(dto);
+    if (selection.provider === 'ollama' && siteType === 'dynamic') {
+      throw new BadRequestException(
+        'Ollama cannot build advanced (dynamic) projects yet - use Claude Code.',
+      );
+    }
+
+    const { projectId, projectPath } = dto.projectId
+      ? this.resolveExistingProject(dto.projectId)
+      : this.createProject(dto.name, siteType);
+
     const jobId = randomUUID();
     const attachments = this.saveAttachments(projectId, jobId, files);
     appendTurn(projectId, {
@@ -110,6 +128,7 @@ export class ProjectGeneratorService {
       cwd: projectPath,
       model: selection.model,
       attachments,
+      siteType,
     });
     const output$ = new Subject<AgentOutputEvent>();
     const job: Job = {
@@ -125,21 +144,83 @@ export class ProjectGeneratorService {
     this.jobs.set(jobId, job);
 
     handle.output$.subscribe({
+      // A Subject's subscribe callbacks run synchronously on its own
+      // .next()/.complete() call, and RxJS rethrows anything they throw as
+      // an uncaught exception on the next tick - which crashes the entire
+      // Node process by default, taking down every other in-flight
+      // job/preview with it, not just this one (see healOrphanedTurn above
+      // for the recovery this guards against). A single bad write here
+      // (e.g. a transient file-write error) shouldn't be able to do that -
+      // catch and just fail this job instead.
       next: (event) => {
-        if (!job.deleted) {
-          appendTurnEvent(projectId, jobId, event);
-        }
-        if (event.type === 'exit') {
-          job.status = event.code === 0 ? 'completed' : 'failed';
-        } else if (event.type === 'error') {
+        try {
+          if (!job.deleted) {
+            appendTurnEvent(projectId, jobId, event);
+          }
+          if (event.type === 'exit') {
+            job.status = event.code === 0 ? 'completed' : 'failed';
+            // A dynamic project's live preview should reflect this turn's
+            // edits - restart is idempotent-safe to call even if nothing was
+            // running yet (see DynamicPreviewService.start).
+            if (job.status === 'completed' && siteType === 'dynamic' && !job.deleted) {
+              void this.dynamicPreview.restart(projectId, projectPath);
+            }
+          } else if (event.type === 'error') {
+            job.status = 'failed';
+          }
+          output$.next(event);
+        } catch (err) {
+          this.logger.error(
+            `Error handling agent output for job ${jobId}: ${(err as Error).message}`,
+            (err as Error).stack,
+          );
           job.status = 'failed';
         }
-        output$.next(event);
       },
-      complete: () => this.completeJob(job),
+      complete: () => {
+        try {
+          this.completeJob(job);
+        } catch (err) {
+          this.logger.error(
+            `Error completing job ${jobId}: ${(err as Error).message}`,
+            (err as Error).stack,
+          );
+        }
+      },
     });
 
     return { jobId, projectId };
+  }
+
+  /** Polled by the frontend every ~2s for a dynamic project. Also
+   *  self-heals: DynamicPreviewService's tracking is in-memory only (see
+   *  its own known-limitation note), so an OpenLove backend restart loses
+   *  track of an otherwise-fine, already-built preview and leaves it
+   *  showing 'idle' forever - nothing would ever kick off a fresh start()
+   *  again except a brand new turn completing. Since simply viewing the
+   *  project polls this, relaunching from here (a no-op if something's
+   *  already tracked) means the preview recovers on its own the next time
+   *  someone looks at it. Passes the last completed turn's finish time so
+   *  DynamicPreviewService can skip straight to `npm run start` when a
+   *  build already on disk provably postdates it (see its
+   *  hasFreshBuild/fastResumeIfBuiltAfter) - this call fires on every
+   *  restart even though nothing about the project's code changed, so
+   *  redoing install/generate/db-push/build every time would be pure
+   *  waste. Only fires at all when there's an actual finished turn to show
+   *  - never for one that's still running or that failed. */
+  getPreviewStatus(id: string): PreviewState {
+    assertSafeId(id);
+    const status = this.dynamicPreview.getStatus(id);
+    if (status.status === 'idle' && this.getSiteType(id) === 'dynamic') {
+      const turns = readAllTurns(id);
+      const last = turns[turns.length - 1];
+      if (last?.status === 'completed') {
+        void this.dynamicPreview.start(id, getProjectDir(id), {
+          fastResumeIfBuiltAfter: last.finishedAt,
+        });
+      }
+    }
+    return status;
   }
 
   stream(jobId: string): Observable<AgentOutputEvent> {
@@ -165,11 +246,46 @@ export class ProjectGeneratorService {
       throw new NotFoundException(`No project found with id ${id}`);
     }
     const meta = readMeta(id) ?? this.legacyMeta(id);
+    const turns = readAllTurns(id);
+    this.healOrphanedTurn(id, turns);
     return {
       ...meta,
-      turns: readAllTurns(id),
+      turns,
       activeJobId: this.findActiveJobId(id),
     };
+  }
+
+  /**
+   * A turn can be left permanently `"running"` if the backend process that
+   * was executing it died or restarted mid-turn - `this.jobs` is in-memory
+   * only (see its own comment above), so nothing else would ever notice or
+   * update it, and the frontend has no job/stream left to attach to either
+   * (it renders that as an immediate "Failed"). Detected lazily here, the
+   * same self-healing pattern as `getPreviewStatus` uses for
+   * `DynamicPreviewService`'s equivalent in-memory tracking: since this is
+   * already polled while a project's page is open, a turn's status
+   * self-corrects the next time anyone looks, rather than staying stuck
+   * "running" forever with no way for the user to even retry.
+   */
+  private healOrphanedTurn(projectId: string, turns: TurnDetail[]): void {
+    const last = turns[turns.length - 1];
+    if (!last || last.status !== 'running' || this.jobs.has(last.turnId)) {
+      return;
+    }
+    const finishedAt = new Date().toISOString();
+    appendTurnEvent(projectId, last.turnId, {
+      type: 'error',
+      message:
+        'Generation was interrupted (the server restarted mid-run) - try again.',
+    });
+    updateTurnStatus(projectId, last.turnId, 'failed', finishedAt);
+    last.status = 'failed';
+    last.finishedAt = finishedAt;
+    last.events.push({
+      type: 'error',
+      message:
+        'Generation was interrupted (the server restarted mid-run) - try again.',
+    });
   }
 
   /**
@@ -222,6 +338,10 @@ export class ProjectGeneratorService {
     if (!existsSync(projectPath)) {
       throw new NotFoundException(`No project found with id ${id}`);
     }
+    // A dynamic project may have a live preview process holding this
+    // folder open (or just pointlessly running against a folder that's
+    // about to disappear) - stop it before anything else.
+    this.dynamicPreview.stop(id);
     // Kill anything still writing into this folder before removing it, and
     // mark it deleted so leftover in-flight events (which can still arrive
     // for a moment after kill()) don't recreate the folder we're about to
@@ -276,7 +396,10 @@ export class ProjectGeneratorService {
     return target;
   }
 
-  private createProject(name: string | undefined): {
+  private createProject(
+    name: string | undefined,
+    siteType: SiteType,
+  ): {
     projectId: string;
     projectPath: string;
   } {
@@ -287,17 +410,35 @@ export class ProjectGeneratorService {
     }
     const projectId = randomUUID();
     const projectPath = getProjectDir(projectId);
-    // Starts from a blank folder - the agent builds whatever the request
-    // calls for, guided entirely by buildAgentPrompt's conventions (tech
-    // constraint, default design language, optional content manifest)
-    // rather than a literal template to copy and edit.
-    mkdirSync(projectPath, { recursive: true });
+    if (siteType === 'dynamic') {
+      // Seeded from a real, working Next.js + Prisma + SQLite scaffold -
+      // the agent extends it (see prompt-template.ts's dynamic
+      // conventions) rather than inventing boilerplate from scratch.
+      cpSync(getAdvancedStarterDir(), projectPath, { recursive: true });
+    } else {
+      // Starts from a blank folder - the agent builds whatever the request
+      // calls for, guided entirely by buildAgentPrompt's conventions (tech
+      // constraint, default design language, optional content manifest)
+      // rather than a literal template to copy and edit.
+      mkdirSync(projectPath, { recursive: true });
+    }
     writeMeta(projectId, {
       id: projectId,
       name: name.trim(),
       createdAt: new Date().toISOString(),
+      siteType,
     });
     return { projectId, projectPath };
+  }
+
+  /** A project's siteType is fixed at creation - a follow-up always reads
+   *  it back off disk rather than trusting a per-request value. Absent
+   *  meta (a project that predates this field) is treated as 'static'.
+   *  Public: preview.middleware.ts also needs this to decide whether to
+   *  proxy to a live dev server or serve files directly. */
+  getSiteType(id: string): SiteType {
+    assertSafeId(id);
+    return readMeta(id)?.siteType ?? 'static';
   }
 
   /** Which agent builds this turn: an explicit per-request override, else

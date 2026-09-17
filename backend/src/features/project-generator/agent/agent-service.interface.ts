@@ -1,5 +1,5 @@
 import { Observable } from 'rxjs';
-import type { TurnAttachment } from '../project.types';
+import type { SiteType, TurnAttachment } from '../project.types';
 
 export type AgentOutputEvent =
   | { type: 'stdout'; data: string }
@@ -19,6 +19,7 @@ export interface AgentRunRequest {
    *  conventions/system prompt (see agent/prompt-template.ts). */
   userPrompt: string;
   cwd: string;
+  siteType: SiteType;
   /** Which local/remote model to use - required for providers with more
    *  than one real choice (Ollama); ignored by providers that don't need it. */
   model?: string;

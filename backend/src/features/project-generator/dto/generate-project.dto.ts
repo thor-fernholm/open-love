@@ -44,4 +44,13 @@ export class GenerateProjectDto {
   @IsString()
   @MaxLength(200)
   model?: string;
+
+  /**
+   * Only consulted when creating a *new* project (no `projectId`) - a
+   * follow-up always uses that project's own stored siteType, since the
+   * underlying tech stack can't change mid-project. Defaults to 'static'.
+   */
+  @IsOptional()
+  @IsIn(['static', 'dynamic'])
+  siteType?: 'static' | 'dynamic';
 }
