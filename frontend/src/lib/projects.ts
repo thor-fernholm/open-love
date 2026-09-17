@@ -7,7 +7,8 @@ export type AgentOutputEvent =
   | { type: 'stdout'; data: string }
   | { type: 'stderr'; data: string }
   | { type: 'exit'; code: number | null }
-  | { type: 'error'; message: string };
+  | { type: 'error'; message: string }
+  | { type: 'summary'; text: string };
 
 export type TurnStatus = 'running' | 'completed' | 'failed' | 'cancelled';
 
@@ -49,6 +50,13 @@ export interface TurnDetail {
   attachments?: TurnAttachment[];
   provider: 'claude' | 'ollama';
   model?: string;
+  /** The agent's own short reply - always shown in chat, unlike the raw
+   *  transcript in `events`. Absent for a turn that predates this field or
+   *  that errored before producing any text. */
+  summary?: string;
+  /** Whether this turn actually touched any project files - false for a
+   *  plain answer or clarifying question. */
+  changedFiles?: boolean;
 }
 
 export interface ProjectSummary {

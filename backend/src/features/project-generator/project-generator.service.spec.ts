@@ -155,6 +155,20 @@ describe('ProjectGeneratorService', () => {
     expect(service.getProject(projectId).turns).toHaveLength(2);
   });
 
+  it('passes prior turns as history to the agent, but never the turn currently being started', () => {
+    const { projectId } = service.start({ prompt: 'build a todo app', name: 'Todo App' });
+    expect(agent.lastRequest.history).toEqual([]); // nothing before the very first turn
+    agent.lastHandle.subject.next({ type: 'summary', text: 'Built a basic todo app.' });
+    agent.lastHandle.subject.next({ type: 'exit', code: 0 });
+    agent.lastHandle.subject.complete();
+
+    service.start({ prompt: 'add dark mode', projectId });
+
+    expect(agent.lastRequest.history).toEqual([
+      { prompt: 'build a todo app', summary: 'Built a basic todo app.' },
+    ]);
+  });
+
   it('defaults a new project to the persisted global provider selection', () => {
     const { projectId } = service.start({ prompt: 'a todo app', name: 'Todo App' });
     expect(service.getProject(projectId).turns[0]).toMatchObject({
@@ -413,12 +427,15 @@ describe('ProjectGeneratorService', () => {
     expect(agent.lastRequest.siteType).toBe('dynamic');
   });
 
-  it('restarts the live preview after a dynamic project turn completes successfully', () => {
+  it('restarts the live preview after a dynamic project turn that actually changed a file', () => {
     const { projectId, jobId } = service.start({
       prompt: 'a full app',
       name: 'App',
       siteType: 'dynamic',
     });
+    // Stand in for the agent editing a file mid-turn - restart should only
+    // fire when something on disk actually changed (see changedFiles).
+    writeFileSync(join(getProjectDir(projectId), 'edited.txt'), 'x');
     agent.lastHandle.subject.next({ type: 'exit', code: 0 });
     agent.lastHandle.subject.complete();
 
@@ -426,7 +443,24 @@ describe('ProjectGeneratorService', () => {
       projectId,
       getProjectDir(projectId),
     );
+    expect(service.getProject(projectId).turns[0].changedFiles).toBe(true);
     void jobId;
+  });
+
+  it('does not restart the preview (or mark the turn changed) when a dynamic turn touched no files - e.g. a plain answer', () => {
+    const { projectId } = service.start({
+      prompt: 'what framework does this use?',
+      name: 'App',
+      siteType: 'dynamic',
+    });
+    agent.lastHandle.subject.next({ type: 'summary', text: 'This project uses Next.js.' });
+    agent.lastHandle.subject.next({ type: 'exit', code: 0 });
+    agent.lastHandle.subject.complete();
+
+    expect(dynamicPreview.restart).not.toHaveBeenCalled();
+    const turn = service.getProject(projectId).turns[0];
+    expect(turn.changedFiles).toBe(false);
+    expect(turn.summary).toBe('This project uses Next.js.');
   });
 
   it('does not restart the preview when a dynamic project turn fails', () => {
@@ -472,6 +506,7 @@ describe('ProjectGeneratorService', () => {
       name: 'App',
       siteType: 'dynamic',
     });
+    writeFileSync(join(getProjectDir(projectId), 'edited.txt'), 'x'); // a real build turn
     agent.lastHandle.subject.next({ type: 'exit', code: 0 });
     agent.lastHandle.subject.complete();
     dynamicPreview.restart.mockClear(); // clear the completion-triggered call above
@@ -487,6 +522,35 @@ describe('ProjectGeneratorService', () => {
     // project's code, so redoing install/generate/build would be waste.
     expect(dynamicPreview.start).toHaveBeenCalledWith(projectId, getProjectDir(projectId), {
       fastResumeIfBuiltAfter: finishedAt,
+    });
+  });
+
+  it('self-heal uses the last file-changing turn\'s finish time, not a trailing answer-only turn\'s - which finishes after a build it never touched, and would otherwise make a perfectly good build look stale', () => {
+    const { projectId } = service.start({
+      prompt: 'a full app',
+      name: 'App',
+      siteType: 'dynamic',
+    });
+    writeFileSync(join(getProjectDir(projectId), 'edited.txt'), 'x'); // the actual build
+    agent.lastHandle.subject.next({ type: 'exit', code: 0 });
+    agent.lastHandle.subject.complete();
+    const buildingTurnFinishedAt = service.getProject(projectId).turns[0].finishedAt;
+
+    // A trailing answer-only follow-up - touches nothing, but finishes
+    // (and is timestamped) strictly after the build above.
+    service.start({ prompt: 'what does this app do?', projectId });
+    agent.lastHandle.subject.next({ type: 'summary', text: 'It manages a todo list.' });
+    agent.lastHandle.subject.next({ type: 'exit', code: 0 });
+    agent.lastHandle.subject.complete();
+    expect(service.getProject(projectId).turns[1].changedFiles).toBe(false);
+
+    dynamicPreview.restart.mockClear();
+    dynamicPreview.getStatus.mockReturnValue({ status: 'idle' });
+
+    service.getPreviewStatus(projectId);
+
+    expect(dynamicPreview.start).toHaveBeenCalledWith(projectId, getProjectDir(projectId), {
+      fastResumeIfBuiltAfter: buildingTurnFinishedAt,
     });
   });
 

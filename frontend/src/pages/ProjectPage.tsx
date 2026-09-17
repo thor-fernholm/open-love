@@ -105,8 +105,45 @@ export function ProjectPage({ onProjectsChanged }: ProjectPageProps) {
   const [nameDraft, setNameDraft] = useState('');
   const [renaming, setRenaming] = useState(false);
   const [exportModalOpen, setExportModalOpen] = useState(false);
+  // Prompts submitted while a turn is already running - sent automatically,
+  // one at a time, as each prior turn finishes (see drainQueueIfAny below).
+  // Purely client-side/ephemeral, like jobs/preview tracking on the
+  // backend - not worth persisting across a reload.
+  const [queue, setQueue] = useState<{ prompt: string; attachments: File[] }[]>([]);
   const eventSourceRef = useRef<EventSource | null>(null);
   const historyRef = useRef<HTMLDivElement>(null);
+
+  // Derived early (rather than down by the JSX, where it used to live) so
+  // sendPrompt/handleGenerate/the drain logic below can all read it
+  // directly instead of re-deriving "is something running" themselves.
+  const status: GenerationStatus = starting || sending ? 'running' : statusFromTurns(turns);
+
+  // Mirrors `queue` for synchronous reads from inside openStream's SSE
+  // handlers below (a plain ref write during render, not a state update -
+  // the standard "latest ref" pattern; avoids the handlers closing over a
+  // stale `queue` from whenever openStream was originally called, and
+  // avoids calling setState from inside a React effect body).
+  const queueRef = useRef<{ prompt: string; attachments: File[] }[]>([]);
+  useEffect(() => {
+    queueRef.current = queue;
+  }, [queue]);
+  // Same idea for sendPrompt (defined further down, but openStream needs to
+  // call the latest version of it) - breaks what would otherwise be a
+  // circular useCallback dependency between openStream and sendPrompt.
+  const sendPromptRef = useRef<(promptText: string, files: File[]) => void>(() => {});
+
+  // Called once the just-finished turn's status has already been set -
+  // sends the next queued prompt, if any, the same way a direct Send
+  // would. A plain callback invoked from a real event (the SSE stream
+  // closing), not a React effect, so this can freely call setState.
+  const drainQueueIfAny = useCallback(() => {
+    const current = queueRef.current;
+    if (current.length === 0) return;
+    const [next, ...rest] = current;
+    queueRef.current = rest;
+    setQueue(rest);
+    sendPromptRef.current(next.prompt, next.attachments);
+  }, []);
 
   const closeStream = useCallback(() => {
     eventSourceRef.current?.close();
@@ -132,6 +169,15 @@ export function ProjectPage({ onProjectsChanged }: ProjectPageProps) {
     });
   }, []);
 
+  const setLastTurnSummary = useCallback((summary: string) => {
+    setTurns((prev) => {
+      if (prev.length === 0) return prev;
+      const updated = [...prev];
+      updated[updated.length - 1] = { ...updated[updated.length - 1], summary };
+      return updated;
+    });
+  }, []);
+
   const openStream = useCallback(
     (streamJobId: string) => {
       const es = new EventSource(streamUrl(streamJobId));
@@ -145,12 +191,18 @@ export function ProjectPage({ onProjectsChanged }: ProjectPageProps) {
       es.addEventListener('stdout', onOutput('stdout'));
       es.addEventListener('stderr', onOutput('stderr'));
 
+      es.addEventListener('summary', (e: MessageEvent) => {
+        const event: AgentOutputEvent = JSON.parse(e.data);
+        if (event.type === 'summary') setLastTurnSummary(event.text);
+      });
+
       es.addEventListener('exit', (e: MessageEvent) => {
         const event: AgentOutputEvent = JSON.parse(e.data);
         if (event.type !== 'exit') return;
         appendEventToLastTurn(event);
         closeStream();
         setLastTurnStatus(event.code === 0 ? 'completed' : 'failed');
+        drainQueueIfAny();
       });
 
       // Named "error" SSE events (our server's AgentOutputEvent) and
@@ -163,9 +215,10 @@ export function ProjectPage({ onProjectsChanged }: ProjectPageProps) {
         }
         closeStream();
         setLastTurnStatus('failed');
+        drainQueueIfAny();
       });
     },
-    [appendEventToLastTurn, closeStream, setLastTurnStatus],
+    [appendEventToLastTurn, closeStream, setLastTurnStatus, setLastTurnSummary, drainQueueIfAny],
   );
 
   // Close any open stream on unmount.
@@ -282,11 +335,63 @@ export function ProjectPage({ onProjectsChanged }: ProjectPageProps) {
     };
   }, [id]);
 
+  // Actually sends a follow-up prompt into the current (existing) project -
+  // shared by a direct Send and by drainQueueIfAny above, so a
+  // queued-then-dequeued prompt goes through exactly the same path a
+  // typed-and-sent-immediately one does.
+  const sendPrompt = useCallback(
+    async (promptText: string, files: File[]) => {
+      if (!id) return;
+      setSending(true);
+      setError(null);
+      try {
+        const { jobId: newJobId } = await startGeneration(
+          promptText,
+          { projectId: id },
+          files,
+          selection,
+        );
+        setJobId(newJobId);
+        setTurns((prev) => [
+          ...prev,
+          {
+            turnId: newJobId,
+            prompt: promptText,
+            startedAt: new Date().toISOString(),
+            status: 'running',
+            events: [],
+            attachments: files.map((file) => ({
+              name: file.name,
+              path: '',
+              mimeType: file.type,
+            })),
+            provider: selection.provider,
+            model: selection.model,
+          },
+        ]);
+        openStream(newJobId);
+      } catch (err) {
+        setError((err as Error).message);
+      } finally {
+        setSending(false);
+      }
+    },
+    [id, selection, openStream],
+  );
+  // Keep the ref used by drainQueueIfAny pointed at the latest sendPrompt
+  // (written from an effect, not during render - see queueRef above).
+  useEffect(() => {
+    sendPromptRef.current = (promptText, files) => {
+      void sendPrompt(promptText, files);
+    };
+  }, [sendPrompt]);
+
   async function handleGenerate() {
     const trimmedPrompt = prompt.trim();
-    if (!trimmedPrompt || starting || sending) return;
+    if (!trimmedPrompt) return;
 
     if (!id) {
+      if (starting) return;
       const trimmedName = name.trim();
       if (!trimmedName) return;
       setStarting(true);
@@ -308,41 +413,30 @@ export function ProjectPage({ onProjectsChanged }: ProjectPageProps) {
       return;
     }
 
-    setSending(true);
-    setError(null);
-    try {
-      const { jobId: newJobId } = await startGeneration(
-        trimmedPrompt,
-        { projectId: id },
-        attachments,
-        selection,
-      );
-      setPrompt('');
-      setJobId(newJobId);
-      setTurns((prev) => [
-        ...prev,
-        {
-          turnId: newJobId,
-          prompt: trimmedPrompt,
-          startedAt: new Date().toISOString(),
-          status: 'running',
-          events: [],
-          attachments: attachments.map((file) => ({
-            name: file.name,
-            path: '',
-            mimeType: file.type,
-          })),
-          provider: selection.provider,
-          model: selection.model,
-        },
-      ]);
-      setAttachments([]);
-      openStream(newJobId);
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setSending(false);
+    const files = attachments;
+    setPrompt('');
+    setAttachments([]);
+    submitPrompt(trimmedPrompt, files);
+  }
+
+  // Routes a prompt to either an immediate send or the queue, depending on
+  // whether something's already running - shared by a direct Send
+  // (handleGenerate) and by "Retry" on a failed turn (handleRetry) below,
+  // so both behave identically once there's text to submit.
+  function submitPrompt(promptText: string, files: File[]) {
+    if (status === 'running') {
+      setQueue((prev) => [...prev, { prompt: promptText, attachments: files }]);
+      return;
     }
+    void sendPrompt(promptText, files);
+  }
+
+  // Resends a failed turn's original prompt - not its attachments, which
+  // aren't held onto client-side once a turn has been submitted (they're
+  // already saved server-side under that original turn's own folder, not
+  // reusable for a new one).
+  function handleRetry(turn: TurnDetail) {
+    submitPrompt(turn.prompt, []);
   }
 
   function startEditingName() {
@@ -370,6 +464,9 @@ export function ProjectPage({ onProjectsChanged }: ProjectPageProps) {
   async function handleCancel() {
     closeStream();
     setLastTurnStatus('cancelled');
+    // Cancelling is a signal to stop, not "skip ahead" - drop anything
+    // queued rather than auto-continuing into it.
+    setQueue([]);
 
     // Best-effort: the job may already have finished on the server by the
     // time this arrives, which is fine - nothing left to cancel.
@@ -383,8 +480,6 @@ export function ProjectPage({ onProjectsChanged }: ProjectPageProps) {
   }
 
   const mode: 'new' | 'existing' = id ? 'existing' : 'new';
-  const status: GenerationStatus =
-    starting || sending ? 'running' : statusFromTurns(turns);
   const loaded = Boolean(id) && !loading;
   const turnRunning = status === 'running';
 
@@ -514,8 +609,20 @@ export function ProjectPage({ onProjectsChanged }: ProjectPageProps) {
               : 'No history yet.'}
           </p>
         ) : (
-          turns.map((turn) => <ChatTurn key={turn.turnId} turn={turn} />)
+          turns.map((turn) => (
+            <ChatTurn key={turn.turnId} turn={turn} onRetry={() => handleRetry(turn)} />
+          ))
         )}
+        {queue.map((queued, i) => (
+          <div key={i} className="flex max-w-[85%] flex-col items-end gap-1 self-end">
+            <div className="rounded-lg bg-chat-bubble/50 px-4 py-2 text-sm text-on-primary shadow-sm">
+              {queued.prompt}
+            </div>
+            <span className="rounded-full bg-surface-soft px-2 py-0.5 text-[11px] text-muted">
+              Queued
+            </span>
+          </div>
+        ))}
       </div>
 
       <div className="mx-auto w-full max-w-3xl flex-shrink-0 px-4 pb-6">

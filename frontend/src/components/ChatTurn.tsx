@@ -16,6 +16,8 @@ function eventsToLines(events: AgentOutputEvent[]): TerminalLine[] {
     } else if (event.type === 'error') {
       lines.push({ type: 'system', text: `--- error: ${event.message} ---` });
     }
+    // 'summary' events aren't shown in the raw transcript - they're
+    // rendered as the reply bubble itself (see ChatTurn below).
   }
   return lines;
 }
@@ -26,6 +28,16 @@ const STATUS_LABEL: Record<TurnStatus, string> = {
   failed: 'Failed',
   cancelled: 'Cancelled',
 };
+
+/** "Done" implies a build happened - for a turn that only answered a
+ *  question or asked one back (changedFiles === false), "Answered" is a
+ *  more honest label for what actually happened. */
+function statusLabel(turn: TurnDetail): string {
+  if (turn.status === 'completed' && turn.changedFiles === false) {
+    return 'Answered';
+  }
+  return STATUS_LABEL[turn.status];
+}
 
 const STATUS_DOT: Record<TurnStatus, string> = {
   running: 'bg-accent-amber',
@@ -46,13 +58,20 @@ function describeModel(turn: TurnDetail): string {
   return `Claude Code · ${label}`;
 }
 
+interface ChatTurnProps {
+  turn: TurnDetail;
+  /** Resends this turn's original prompt - only ever rendered for a
+   *  'failed' turn (see the button below). */
+  onRetry?: () => void;
+}
+
 /**
  * One exchange in the project's chat history: the prompt as a user bubble,
  * then the result - a live generating indicator while running, or a
  * compact status line with the raw output tucked behind "Show details"
  * once finished (kept for transparency/debugging, not front-and-center).
  */
-export function ChatTurn({ turn }: { turn: TurnDetail }) {
+export function ChatTurn({ turn, onRetry }: ChatTurnProps) {
   const [expanded, setExpanded] = useState(false);
   const lines = eventsToLines(turn.events);
   const running = turn.status === 'running';
@@ -93,22 +112,38 @@ export function ChatTurn({ turn }: { turn: TurnDetail }) {
             )}
           </div>
         ) : (
-          <div className="flex items-center gap-2 text-sm">
-            <span className={`h-2 w-2 rounded-full ${STATUS_DOT[turn.status]}`} />
-            <span className="text-muted">{STATUS_LABEL[turn.status]}</span>
-            <span className="rounded-full bg-surface-soft px-2 py-0.5 text-xs text-muted">
-              {describeModel(turn)}
-            </span>
-            {lines.length > 0 && (
-              <button
-                type="button"
-                onClick={() => setExpanded((e) => !e)}
-                className="text-xs text-primary underline transition hover:opacity-70"
-              >
-                {expanded ? 'Hide details' : 'Show details'}
-              </button>
+          <>
+            {turn.summary && (
+              <div className="rounded-lg bg-surface-card px-4 py-2 text-sm text-body-strong shadow-sm">
+                {turn.summary}
+              </div>
             )}
-          </div>
+            <div className="flex items-center gap-2 text-sm">
+              <span className={`h-2 w-2 rounded-full ${STATUS_DOT[turn.status]}`} />
+              <span className="text-muted">{statusLabel(turn)}</span>
+              <span className="rounded-full bg-surface-soft px-2 py-0.5 text-xs text-muted">
+                {describeModel(turn)}
+              </span>
+              {lines.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setExpanded((e) => !e)}
+                  className="text-xs text-primary underline transition hover:opacity-70"
+                >
+                  {expanded ? 'Hide details' : 'Show details'}
+                </button>
+              )}
+              {turn.status === 'failed' && onRetry && (
+                <button
+                  type="button"
+                  onClick={onRetry}
+                  className="text-xs font-medium text-primary underline transition hover:opacity-70"
+                >
+                  Retry
+                </button>
+              )}
+            </div>
+          </>
         )}
       </div>
 

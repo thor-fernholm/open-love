@@ -50,6 +50,17 @@ export interface TurnRecord {
   attachments?: TurnAttachment[];
   provider: AgentProvider;
   model?: string;
+  /** The agent's own short reply - "now it's done, I added…", a plain
+   *  answer to a question, or a clarifying question back to the user. Always
+   *  shown in chat (see ChatTurn.tsx), unlike the raw event transcript
+   *  tucked behind "Show details". Absent for an older turn predating this
+   *  field, or one that errored before the agent produced any text. */
+  summary?: string;
+  /** Whether this turn actually touched any project files - false for a
+   *  plain answer/clarifying question. Lets the UI show "Answered" instead
+   *  of "Done", and lets ProjectGeneratorService skip restarting a dynamic
+   *  project's live preview when nothing changed (see project-generator.service.ts). */
+  changedFiles?: boolean;
 }
 
 /** A turn plus its replayed raw output - what today's terminal view renders. */

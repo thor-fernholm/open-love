@@ -31,7 +31,16 @@ export class ClaudeCliService implements IAgentService {
       request.userPrompt,
       request.attachments,
       request.siteType,
+      request.history,
     );
+    // `claude -p` with no --output-format flag (the default) prints only
+    // the final assistant text to stdout - no tool-call log, no JSON
+    // envelope (confirmed live: even a run that edits files produces
+    // exactly one clean sentence on stdout). So the accumulated stdout
+    // *is* the agent's short reply - see the 'summary' event on a clean
+    // exit below, which is what ChatTurn.tsx shows by default instead of
+    // the raw "Show details" transcript.
+    let stdout = '';
 
     // cross-spawn resolves npm-installed `.cmd`/`.bat` shims on Windows
     // (which Node's own child_process.spawn can't launch without a shell)
@@ -71,7 +80,9 @@ export class ClaudeCliService implements IAgentService {
     // stdout/stderr are only null when stdio is overridden away from the
     // 'pipe' default, which we never do here.
     child.stdout!.on('data', (chunk: Buffer) => {
-      output$.next({ type: 'stdout', data: chunk.toString() });
+      const text = chunk.toString();
+      stdout += text;
+      output$.next({ type: 'stdout', data: text });
     });
 
     child.stderr!.on('data', (chunk: Buffer) => {
@@ -84,6 +95,10 @@ export class ClaudeCliService implements IAgentService {
     });
 
     child.on('close', (code) => {
+      const summary = stdout.trim();
+      if (code === 0 && summary) {
+        output$.next({ type: 'summary', text: summary });
+      }
       output$.next({ type: 'exit', code });
       output$.complete();
     });

@@ -136,6 +136,7 @@ export function updateTurnStatus(
   turnId: string,
   status: TurnStatus,
   finishedAt: string,
+  extra?: { summary?: string; changedFiles?: boolean },
 ): void {
   const turns = readTurns(id);
   const turn = turns.find((t) => t.turnId === turnId);
@@ -144,6 +145,12 @@ export function updateTurnStatus(
   }
   turn.status = status;
   turn.finishedAt = finishedAt;
+  if (extra?.summary !== undefined) {
+    turn.summary = extra.summary;
+  }
+  if (extra?.changedFiles !== undefined) {
+    turn.changedFiles = extra.changedFiles;
+  }
   writeTurns(id, turns);
 }
 

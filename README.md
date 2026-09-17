@@ -21,7 +21,7 @@ Describe the site you want, watch it get built. Keep talking to it and it keeps 
 **1. Clone the repo**
 
 ```bash
-git clone https://github.com/<your-username>/open-love.git
+git clone https://github.com/thor-fernholm/open-love.git
 cd open-love
 ```
 

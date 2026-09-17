@@ -51,10 +51,13 @@ export function PromptForm({
   onCancel,
 }: PromptFormProps) {
   const running = status === 'running';
+  // In "existing" mode, sending while already running queues instead of
+  // blocking (see ProjectPage's queue) - so inputs stay usable and Send
+  // stays enabled. "new" mode has nothing to queue against yet (the only
+  // in-flight thing is the project's own creation), so it still locks.
+  const locked = mode === 'new' && running;
   const canGenerate =
-    !running &&
-    prompt.trim().length > 0 &&
-    (mode === 'existing' || name.trim().length > 0);
+    prompt.trim().length > 0 && (mode === 'existing' ? true : !locked && name.trim().length > 0);
 
   function addFiles(files: File[]) {
     onAttachmentsChange([...attachments, ...files].slice(0, MAX_ATTACHMENTS));
@@ -79,14 +82,14 @@ export function PromptForm({
             type="text"
             value={name}
             onChange={(e) => onNameChange(e.target.value)}
-            disabled={running}
+            disabled={locked}
             placeholder="e.g. Personal portfolio site"
             className="w-full rounded-sm border border-hairline bg-canvas px-3 py-2 text-sm text-ink shadow-sm outline-none focus:border-primary focus:ring-2 focus:ring-ring/50 disabled:opacity-60"
           />
           <SiteTypeToggle
             value={siteType}
             onChange={onSiteTypeChange}
-            disabled={running}
+            disabled={locked}
           />
         </div>
       )}
@@ -101,11 +104,13 @@ export function PromptForm({
           id="prompt"
           value={prompt}
           onChange={(e) => onPromptChange(e.target.value)}
-          disabled={running}
+          disabled={locked}
           placeholder={
             mode === 'new'
               ? 'Describe the project you want to generate…'
-              : 'Describe what you’d like to improve, fix, or add next…'
+              : running
+                ? 'Type a follow-up - it’ll send once this one finishes…'
+                : 'Describe what you’d like to improve, fix, or add next…'
           }
           rows={4}
           className="w-full resize-none rounded-sm border border-hairline bg-canvas p-3 text-sm text-ink shadow-sm outline-none focus:border-primary focus:ring-2 focus:ring-ring/50 disabled:opacity-60"
@@ -141,7 +146,7 @@ export function PromptForm({
             disabled={!canGenerate}
             className="rounded-sm bg-primary px-4 py-2 text-sm font-medium text-on-primary shadow-button-inset transition hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-40"
           >
-            {mode === 'new' ? 'Generate Project' : 'Send'}
+            {mode === 'new' ? 'Generate Project' : running ? 'Queue' : 'Send'}
           </button>
           {running && (
             <button
@@ -158,13 +163,13 @@ export function PromptForm({
           <ModelSelect
             value={selection}
             onChange={onSelectionChange}
-            disabled={running}
+            disabled={locked}
             claudeOnly={siteType === 'dynamic'}
           />
           <FileButton
             accept={ATTACHMENT_ACCEPT}
             multiple
-            disabled={running || attachments.length >= MAX_ATTACHMENTS}
+            disabled={locked || attachments.length >= MAX_ATTACHMENTS}
             onFiles={addFiles}
           >
             <PaperclipIcon /> Attach

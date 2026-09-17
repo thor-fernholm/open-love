@@ -75,6 +75,17 @@ interface Job {
    *  in-flight output events that arrive after kill() but before the
    *  underlying process has actually exited. */
   deleted: boolean;
+  /** The agent's own short reply, captured off a 'summary' event - see
+   *  TurnRecord.summary. Persisted alongside status/finishedAt in
+   *  completeJob(). */
+  summary?: string;
+  /** Newest file mtime under the project dir when this job started - diffed
+   *  against the same reading at exit to derive changedFiles below, without
+   *  trusting the agent to self-report it. */
+  startMtime: number;
+  /** Whether any project file actually changed during this run - see
+   *  TurnRecord.changedFiles. Set once, at exit. */
+  changedFiles?: boolean;
 }
 
 @Injectable()
@@ -111,6 +122,17 @@ export class ProjectGeneratorService {
       ? this.resolveExistingProject(dto.projectId)
       : this.createProject(dto.name, siteType);
 
+    // Read before appending this turn below, so it's naturally just the
+    // *prior* turns - what the agent should remember, not this one. See
+    // agent/prompt-template.ts's buildHistorySection for how it's used
+    // (compacted once it's large) and why: without this, every turn started
+    // fresh with no memory of what was already asked or answered.
+    const history = readAllTurns(projectId).map((turn) => ({
+      prompt: turn.prompt,
+      summary: turn.summary,
+    }));
+    const startMtime = this.newestMtime(projectPath);
+
     const jobId = randomUUID();
     const attachments = this.saveAttachments(projectId, jobId, files);
     appendTurn(projectId, {
@@ -129,6 +151,7 @@ export class ProjectGeneratorService {
       model: selection.model,
       attachments,
       siteType,
+      history,
     });
     const output$ = new Subject<AgentOutputEvent>();
     const job: Job = {
@@ -140,6 +163,7 @@ export class ProjectGeneratorService {
       output$,
       completed: false,
       deleted: false,
+      startMtime,
     };
     this.jobs.set(jobId, job);
 
@@ -157,12 +181,24 @@ export class ProjectGeneratorService {
           if (!job.deleted) {
             appendTurnEvent(projectId, jobId, event);
           }
-          if (event.type === 'exit') {
+          if (event.type === 'summary') {
+            job.summary = event.text;
+          } else if (event.type === 'exit') {
             job.status = event.code === 0 ? 'completed' : 'failed';
+            job.changedFiles = this.newestMtime(projectPath) > job.startMtime;
             // A dynamic project's live preview should reflect this turn's
             // edits - restart is idempotent-safe to call even if nothing was
-            // running yet (see DynamicPreviewService.start).
-            if (job.status === 'completed' && siteType === 'dynamic' && !job.deleted) {
+            // running yet (see DynamicPreviewService.start). Skipped when
+            // nothing actually changed (a plain answer/clarifying question,
+            // see the Conversation rule in prompt-template.ts) - rebuilding
+            // a whole Next.js app for a turn that touched no files would be
+            // pure waste.
+            if (
+              job.status === 'completed' &&
+              job.changedFiles &&
+              siteType === 'dynamic' &&
+              !job.deleted
+            ) {
               void this.dynamicPreview.restart(projectId, projectPath);
             }
           } else if (event.type === 'error') {
@@ -200,10 +236,14 @@ export class ProjectGeneratorService {
    *  again except a brand new turn completing. Since simply viewing the
    *  project polls this, relaunching from here (a no-op if something's
    *  already tracked) means the preview recovers on its own the next time
-   *  someone looks at it. Passes the last completed turn's finish time so
-   *  DynamicPreviewService can skip straight to `npm run start` when a
-   *  build already on disk provably postdates it (see its
-   *  hasFreshBuild/fastResumeIfBuiltAfter) - this call fires on every
+   *  someone looks at it. Passes the last *file-changing* turn's finish
+   *  time so DynamicPreviewService can skip straight to `npm run start`
+   *  when a build already on disk provably postdates it (see its
+   *  hasFreshBuild/fastResumeIfBuiltAfter) - deliberately not just the
+   *  very last turn's finish time: a trailing answer-only turn (see the
+   *  Conversation rule in prompt-template.ts) finishes *after* the build
+   *  it didn't touch, which would make an otherwise-fine build look stale
+   *  and trigger a pointless full rebuild. This call fires on every
    *  restart even though nothing about the project's code changed, so
    *  redoing install/generate/db-push/build every time would be pure
    *  waste. Only fires at all when there's an actual finished turn to show
@@ -215,8 +255,11 @@ export class ProjectGeneratorService {
       const turns = readAllTurns(id);
       const last = turns[turns.length - 1];
       if (last?.status === 'completed') {
+        const lastChanging = [...turns]
+          .reverse()
+          .find((turn) => turn.status === 'completed' && turn.changedFiles !== false);
         void this.dynamicPreview.start(id, getProjectDir(id), {
-          fastResumeIfBuiltAfter: last.finishedAt,
+          fastResumeIfBuiltAfter: lastChanging?.finishedAt,
         });
       }
     }
@@ -519,6 +562,26 @@ export class ProjectGeneratorService {
     return null;
   }
 
+  /** Newest mtime (ms) among a project's own files (same exclusion list as
+   *  exports/the agent's own list_files - see listDirRecursive), or 0 for
+   *  an empty project. Diffed before/after a turn to derive changedFiles
+   *  without trusting the agent to self-report whether it edited anything -
+   *  see the Conversation rule in prompt-template.ts, which is what makes
+   *  an unchanged result actually possible (a plain answer, not a build). */
+  private newestMtime(root: string): number {
+    let newest = 0;
+    for (const relPath of listDirRecursive(root, '.')) {
+      try {
+        const mtime = statSync(join(root, relPath)).mtimeMs;
+        if (mtime > newest) newest = mtime;
+      } catch {
+        // Removed/replaced mid-scan (e.g. a file the agent is actively
+        // rewriting) - not worth failing the whole turn over.
+      }
+    }
+    return newest;
+  }
+
   private getJob(jobId: string): Job {
     const job = this.jobs.get(jobId);
     if (!job) {
@@ -541,12 +604,10 @@ export class ProjectGeneratorService {
       job.output$.complete();
       return;
     }
-    updateTurnStatus(
-      job.projectId,
-      job.id,
-      job.status,
-      new Date().toISOString(),
-    );
+    updateTurnStatus(job.projectId, job.id, job.status, new Date().toISOString(), {
+      summary: job.summary,
+      changedFiles: job.changedFiles,
+    });
     job.output$.complete();
   }
 }

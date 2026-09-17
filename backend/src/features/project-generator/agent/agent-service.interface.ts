@@ -5,13 +5,24 @@ export type AgentOutputEvent =
   | { type: 'stdout'; data: string }
   | { type: 'stderr'; data: string }
   | { type: 'exit'; code: number | null }
-  | { type: 'error'; message: string };
+  | { type: 'error'; message: string }
+  /** The agent's short final reply - see TurnRecord.summary. Emitted once,
+   *  shortly before 'exit', on a successful run. */
+  | { type: 'summary'; text: string };
 
 export interface AgentProcessHandle {
   /** Emits stdout/stderr chunks, then a single 'exit' or 'error', then completes. */
   output$: Observable<AgentOutputEvent>;
   /** Terminates the underlying process/request. Safe to call more than once. */
   kill(): void;
+}
+
+/** One earlier turn, reduced to just what's worth feeding back to the
+ *  agent as conversation memory - see agent/prompt-template.ts's
+ *  buildHistorySection. */
+export interface HistoryTurn {
+  prompt: string;
+  summary?: string;
 }
 
 export interface AgentRunRequest {
@@ -24,6 +35,11 @@ export interface AgentRunRequest {
    *  than one real choice (Ollama); ignored by providers that don't need it. */
   model?: string;
   attachments: TurnAttachment[];
+  /** Prior turns on this project, oldest first - lets the agent see the
+   *  actual conversation (its own past replies included), not just
+   *  whatever it can infer from the files on disk. See buildHistorySection
+   *  for how this gets compacted once it's large. */
+  history: HistoryTurn[];
 }
 
 /**

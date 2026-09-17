@@ -10,7 +10,7 @@ import {
 } from 'ai';
 import { ollama } from 'ai-sdk-ollama';
 import { Subject } from 'rxjs';
-import { buildConventions } from './prompt-template';
+import { buildConventions, FINAL_REMINDER } from './prompt-template';
 import { createAgentTools } from './tools';
 import type {
   AgentOutputEvent,
@@ -40,7 +40,7 @@ const TOTAL_TIMEOUT_MS = 20 * 60 * 1000;
 
 const TOOL_USE_INSTRUCTIONS = `You have tools to build the site directly in this directory: list_files, read_file, write_file, and done.
 
-This directory may already contain files from earlier work - call list_files (and read_file anything relevant) before you start, so you build on what's there instead of guessing or redoing it from scratch. Write every file the site needs with write_file - one call per file, with that file's complete contents. Once everything is written, call done with a short summary. You must call one of these tools every step - never respond with only text.`;
+This directory may already contain files from earlier work - call list_files (and read_file anything relevant) before you start, so you build on what's there instead of guessing or redoing it from scratch. If the request actually calls for a change, write every file it needs with write_file - one call per file, with that file's complete contents - then call done with a short summary of what you built. If it doesn't (a question, feedback, or a clarifying question of your own per the Conversation rule above) - skip straight to done with zero write_file calls, and put your actual answer in done's summary; that's what the user sees. You must call one of these tools every step, including this one - never respond with only text.`;
 
 /**
  * A real tool-use loop (ToolLoopAgent from the Vercel AI SDK) instead of a
@@ -69,7 +69,7 @@ export class SdkAgentService implements IAgentService {
 
     const tools = createAgentTools(request.cwd);
     const toolNames = Object.keys(tools);
-    const instructions = `${buildConventions(request.attachments, request.siteType)}\n\n${TOOL_USE_INSTRUCTIONS}`;
+    const instructions = `${buildConventions(request.attachments, request.siteType, request.history)}\n\n${TOOL_USE_INSTRUCTIONS}\n\n${FINAL_REMINDER}`;
 
     const agent = new ToolLoopAgent({
       // A lower temperature than Ollama's default (0.8) makes tool-calling
@@ -97,6 +97,16 @@ export class SdkAgentService implements IAgentService {
       onStepFinish: (step: StepResult<ToolSet>) => {
         for (const call of step.toolCalls) {
           output$.next({ type: 'stdout', data: describeToolCall(call) });
+          // done's `summary` argument is the model's own short reply (see
+          // TOOL_USE_INSTRUCTIONS) - surface it as the chat reply
+          // (ChatTurn.tsx's default view), not just a line buried in the
+          // raw "Show details" transcript alongside describeToolCall above.
+          if (call.toolName === 'done') {
+            const summary = String((call.input as { summary?: unknown } | undefined)?.summary ?? '').trim();
+            if (summary) {
+              output$.next({ type: 'summary', text: summary });
+            }
+          }
         }
         // toolChoice: 'required' should prevent this, but surface it
         // visibly rather than silently if a model manages to reply with
