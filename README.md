@@ -8,7 +8,7 @@ Describe the site you want, watch it get built. Keep talking to it and it keeps 
 - **Live preview** — open any generated site in a new tab the moment it's ready. No deploy step while you're iterating.
 - **A real content manager** — projects that need ongoing content (products, posts, testimonials, team, whatever) get a lightweight editor built for exactly that: add, edit, remove, drop in images, paste a YouTube link. No JSON-wrangling.
 - **Bring your own reference material** — attach an image, a text file, or a PDF to a message so a build can actually use it: a logo, brand notes, existing copy.
-- **A swappable design language** — generated sites follow a design reference from the `designs/` folder instead of defaulting to one generic template. Drop in another file, point `ACTIVE_DESIGN_FILE` at it, done.
+- **Varied, tailored design** — each project is matched to one of a pool of design references in the `designs/` folder based on what you asked for (a bakery site and a dark developer tool don't get the same look), then stays consistent across every follow-up. Drop in another file to grow the pool, or pin everything to one via `ACTIVE_DESIGN_FILE`.
 - **Plain files, no lock-in** — every project lives as a normal folder under `generated-projects/`. Nothing trapped in a database or a proprietary format.
 - **Project sidebar** — everything you've started, listed, renameable, deletable.
 
@@ -63,7 +63,7 @@ The backend reads a few optional environment variables — none required to get 
 | `PORT` | `3000` | Backend port |
 | `GENERATED_PROJECTS_DIR` | `../generated-projects` | Where generated sites are written |
 | `DESIGNS_DIR` | `../designs` | Where design reference files live |
-| `ACTIVE_DESIGN_FILE` | `DESIGN.md` | Which file in `DESIGNS_DIR` new projects follow |
+| `ACTIVE_DESIGN_FILE` | unset | Optional override - forces every project onto this one file in `DESIGNS_DIR` instead of picking per-prompt |
 | `OLLAMA_BASE_URL` | `http://localhost:11434` | Where to find a local Ollama instance |
 
 ## Prompt examples

@@ -1,4 +1,4 @@
-import { readActiveDesignGuide } from './design-guide';
+import { readDesignGuide } from './design-guide';
 import { readActiveStackGuide } from './stack-guide';
 import type { HistoryTurn } from './agent-service.interface';
 import type { SiteType, TurnAttachment } from '../project.types';
@@ -85,12 +85,16 @@ function imagesRule({ mentionContentEditor }: { mentionContentEditor: boolean })
 Pick a distinct <slug> per image (e.g. "hero", "team-1", "product-3") and size it to the space it fills. Use this directly as a real <img src="..."> (or CSS background-image) - not a gradient placeholder standing in for one. If you used any of these placeholder photos, say so plainly in your final reply and ${replacementHint}.`;
 }
 
-function buildDesignSection(): string {
-  const guide = readActiveDesignGuide();
+/** `designFile` is resolved per-project (see design-guide.ts's
+ *  pickDesignForPrompt, called once at project creation and persisted) -
+ *  null for a project predating this feature that hasn't self-healed one
+ *  yet, or when designs/ has no files at all. */
+function buildDesignSection(designFile: string | null): string {
+  const guide = designFile ? readDesignGuide(designFile) : null;
   if (!guide) {
     return 'Design language: no specific reference is available - use clean, sensible defaults.';
   }
-  return `Design language - follow this reference for colors, type, spacing, and component styling (define its colors/fonts as CSS variables in a :root block at the top of your stylesheet so they're easy to override later; if it names a custom or proprietary typeface, load a real available substitute - it should document its own fallback - rather than just naming a font that never loads):
+  return `Design language - follow this reference for colors, type, spacing, and component styling (define its colors/fonts as CSS variables in a :root block at the top of your stylesheet so they're easy to override later; if it names a custom or proprietary typeface, load a real available substitute - it should document its own fallback - rather than just naming a font that never loads). Apply these tokens to whatever sections this specific request actually needs - don't default to a generic hero/cards/stats layout regardless of topic:
 
 --- Design system to follow ---
 ${guide}
@@ -196,11 +200,12 @@ export function buildConventions(
   attachments: TurnAttachment[] = [],
   siteType: SiteType = 'static',
   history: HistoryTurn[] = [],
+  designFile: string | null = null,
 ): string {
   const sections =
     siteType === 'dynamic'
-      ? [DYNAMIC_INSTRUCTIONS_HEAD, buildStackSection(), buildDesignSection()]
-      : [STATIC_INSTRUCTIONS_HEAD, buildDesignSection(), CONTENT_CONVENTION];
+      ? [DYNAMIC_INSTRUCTIONS_HEAD, buildStackSection(), buildDesignSection(designFile)]
+      : [STATIC_INSTRUCTIONS_HEAD, buildDesignSection(designFile), CONTENT_CONVENTION];
   return [
     ...sections,
     CONVERSATION_RULE,
@@ -229,6 +234,7 @@ export function buildClaudePrompt(
   attachments: TurnAttachment[] = [],
   siteType: SiteType = 'static',
   history: HistoryTurn[] = [],
+  designFile: string | null = null,
 ): string {
-  return `${buildConventions(attachments, siteType, history)}\n\nUser's request:\n${userPrompt}\n\n${FINAL_REMINDER}`;
+  return `${buildConventions(attachments, siteType, history, designFile)}\n\nUser's request:\n${userPrompt}\n\n${FINAL_REMINDER}`;
 }

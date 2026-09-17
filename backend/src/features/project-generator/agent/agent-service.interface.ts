@@ -40,6 +40,13 @@ export interface AgentRunRequest {
    *  whatever it can infer from the files on disk. See buildHistorySection
    *  for how this gets compacted once it's large. */
   history: HistoryTurn[];
+  /** Which designs/*.md file this project uses - picked once per project
+   *  (see design-guide.ts's pickDesignForPrompt) and passed through here
+   *  rather than re-resolved per strategy, so every turn on a project stays
+   *  visually consistent. Null for a project with no design file resolved
+   *  (predates this feature and hasn't self-healed one yet, or designs/ is
+   *  empty). */
+  designFile: string | null;
 }
 
 /**

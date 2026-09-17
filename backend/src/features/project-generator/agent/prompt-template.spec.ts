@@ -84,4 +84,9 @@ describe('buildClaudePrompt', () => {
     expect(prompt).toContain('Built a landing page with a hero and footer.');
     expect(prompt).toContain("User's request:\nadd dark mode");
   });
+
+  it('says so plainly when no design file is resolved, rather than silently omitting design guidance', () => {
+    const prompt = buildClaudePrompt('add dark mode', [], 'static', [], null);
+    expect(prompt).toContain('no specific reference is available');
+  });
 });

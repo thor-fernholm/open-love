@@ -12,6 +12,7 @@ import { extname, join } from 'path';
 import { Observable, Subject } from 'rxjs';
 import { AgentServiceRegistry } from './agent/agent-registry.service';
 import { AgentOutputEvent, AgentProcessHandle } from './agent/agent-service.interface';
+import { pickDesignForPrompt } from './agent/design-guide';
 import { SettingsService } from '../settings/settings.service';
 import { DynamicPreviewService, PreviewState } from './dynamic-preview.service';
 import { GenerateProjectDto } from './dto/generate-project.dto';
@@ -132,6 +133,7 @@ export class ProjectGeneratorService {
       summary: turn.summary,
     }));
     const startMtime = this.newestMtime(projectPath);
+    const designFile = this.resolveDesignFile(projectId, dto.prompt);
 
     const jobId = randomUUID();
     const attachments = this.saveAttachments(projectId, jobId, files);
@@ -152,6 +154,7 @@ export class ProjectGeneratorService {
       attachments,
       siteType,
       history,
+      designFile,
     });
     const output$ = new Subject<AgentOutputEvent>();
     const job: Job = {
@@ -482,6 +485,26 @@ export class ProjectGeneratorService {
   getSiteType(id: string): SiteType {
     assertSafeId(id);
     return readMeta(id)?.siteType ?? 'static';
+  }
+
+  /** Which design file this project uses - picked once (from whichever
+   *  prompt happens to trigger this first, normally the project's very
+   *  first) and persisted, so every subsequent turn reuses the same value
+   *  instead of re-picking (which would let the look drift mid-project).
+   *  A project created before this feature existed self-heals here on its
+   *  next turn: `meta.designFile` is absent, so it's picked and written
+   *  back the same as any other first-time pick - same lazy pattern as
+   *  healOrphanedTurn/getPreviewStatus use for their own in-memory state. */
+  private resolveDesignFile(projectId: string, prompt: string): string | null {
+    const meta = readMeta(projectId);
+    if (meta && meta.designFile !== undefined) {
+      return meta.designFile;
+    }
+    const designFile = pickDesignForPrompt(prompt, projectId);
+    if (meta) {
+      writeMeta(projectId, { ...meta, designFile });
+    }
+    return designFile;
   }
 
   /** Which agent builds this turn: an explicit per-request override, else

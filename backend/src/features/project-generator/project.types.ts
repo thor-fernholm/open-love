@@ -75,6 +75,13 @@ export interface ProjectMeta {
   /** Absent on projects created before this existed - treated as 'static'
    *  (see ProjectGeneratorService.legacyMeta/readMeta callers). */
   siteType?: SiteType;
+  /** Which designs/*.md file this project uses - picked once (based on the
+   *  project's first prompt) and stable for every turn after, so a
+   *  project's look never drifts mid-conversation. Absent on a project
+   *  created before this existed, or if designs/ had no files at the time -
+   *  ProjectGeneratorService.start self-heals it lazily on next read. See
+   *  agent/design-guide.ts's pickDesignForPrompt. */
+  designFile?: string | null;
 }
 
 export type ProjectSummary = ProjectMeta;

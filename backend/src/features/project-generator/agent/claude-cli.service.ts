@@ -32,6 +32,7 @@ export class ClaudeCliService implements IAgentService {
       request.attachments,
       request.siteType,
       request.history,
+      request.designFile,
     );
     // `claude -p` with no --output-format flag (the default) prints only
     // the final assistant text to stdout - no tool-call log, no JSON
