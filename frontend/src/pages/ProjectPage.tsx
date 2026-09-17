@@ -48,6 +48,10 @@ const DEPLOY_PENDING_STATUSES = new Set<PreviewState['status']>([
 
 const SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 
+// How close to the bottom (in px of remaining scroll) still counts as
+// "following along" for the auto-scroll effect below.
+const NEAR_BOTTOM_THRESHOLD_PX = 80;
+
 /** A compact version of GeneratingIndicator's braille spinner - just the
  *  glyph, no verb/elapsed-time, for a small inline status badge rather than
  *  a full "working on it" line. */
@@ -112,6 +116,12 @@ export function ProjectPage({ onProjectsChanged }: ProjectPageProps) {
   const [queue, setQueue] = useState<{ prompt: string; attachments: File[] }[]>([]);
   const eventSourceRef = useRef<EventSource | null>(null);
   const historyRef = useRef<HTMLDivElement>(null);
+  // Whether the user is currently scrolled near the bottom of the chat -
+  // read by the auto-scroll effect below so a new message only yanks the
+  // view down when they were already following along, not when they've
+  // scrolled up to read earlier history. Starts true (a fresh page load is
+  // "at the bottom" until proven otherwise).
+  const isNearBottomRef = useRef(true);
 
   // Derived early (rather than down by the JSX, where it used to live) so
   // sendPrompt/handleGenerate/the drain logic below can all read it
@@ -178,6 +188,20 @@ export function ProjectPage({ onProjectsChanged }: ProjectPageProps) {
     });
   }, []);
 
+  // Re-checks whether the project now has editable content - called after a
+  // turn finishes (see openStream's 'exit' handler below), since a build
+  // can create content/manifest.json for the first time and the "Edit
+  // content" button should appear right then, not only after a reload.
+  const refreshHasContent = useCallback(() => {
+    if (!id) return;
+    getContent(id)
+      .then((content) => setHasContent(content.collections.length > 0))
+      .catch(() => {
+        // Leave whatever was last known - a transient fetch failure
+        // shouldn't flip the button off.
+      });
+  }, [id]);
+
   const openStream = useCallback(
     (streamJobId: string) => {
       const es = new EventSource(streamUrl(streamJobId));
@@ -202,6 +226,9 @@ export function ProjectPage({ onProjectsChanged }: ProjectPageProps) {
         appendEventToLastTurn(event);
         closeStream();
         setLastTurnStatus(event.code === 0 ? 'completed' : 'failed');
+        // Only a successful build could have changed whether content/
+        // manifest.json exists - skip the extra fetch on a failed turn.
+        if (event.code === 0) refreshHasContent();
         drainQueueIfAny();
       });
 
@@ -218,17 +245,34 @@ export function ProjectPage({ onProjectsChanged }: ProjectPageProps) {
         drainQueueIfAny();
       });
     },
-    [appendEventToLastTurn, closeStream, setLastTurnStatus, setLastTurnSummary, drainQueueIfAny],
+    [
+      appendEventToLastTurn,
+      closeStream,
+      setLastTurnStatus,
+      setLastTurnSummary,
+      refreshHasContent,
+      drainQueueIfAny,
+    ],
   );
 
   // Close any open stream on unmount.
   useEffect(() => closeStream, [closeStream]);
 
-  // Auto-scroll the history to the bottom as turns/events come in.
+  // Auto-scroll the history to the bottom as turns/events come in - but
+  // only when the user was already near the bottom (see isNearBottomRef),
+  // so scrolling up to read earlier messages doesn't get yanked back down
+  // by a new chunk of output arriving.
   useEffect(() => {
     const el = historyRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
+    if (el && isNearBottomRef.current) el.scrollTop = el.scrollHeight;
   }, [turns]);
+
+  const handleHistoryScroll = useCallback(() => {
+    const el = historyRef.current;
+    if (!el) return;
+    isNearBottomRef.current =
+      el.scrollHeight - el.scrollTop - el.clientHeight < NEAR_BOTTOM_THRESHOLD_PX;
+  }, []);
 
   // Fetches an existing project's saved state on mount. There's no need to
   // handle `id` *changing* here - App.tsx keys this component by route, so
@@ -500,7 +544,7 @@ export function ProjectPage({ onProjectsChanged }: ProjectPageProps) {
 
   return (
     <div className="flex h-full flex-col">
-      <header className="flex items-center justify-between gap-4 border-b border-hairline px-6 py-4">
+      <header className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-hairline px-4 py-4 sm:px-6">
         <div className="flex min-w-0 flex-col gap-1">
           {mode === 'existing' && editingName ? (
             <input
@@ -539,7 +583,7 @@ export function ProjectPage({ onProjectsChanged }: ProjectPageProps) {
         </div>
 
         {id && (
-          <div className="flex flex-shrink-0 items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             {isDeploying && (
               <span className="flex items-center gap-2 rounded-full bg-accent-amber/20 px-3 py-1 text-sm font-medium text-body-strong">
                 <span className="font-mono text-primary">{spinnerFrame}</span>
@@ -590,42 +634,45 @@ export function ProjectPage({ onProjectsChanged }: ProjectPageProps) {
         )}
       </header>
 
-      <div
-        ref={historyRef}
-        className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-4 overflow-y-auto px-4 py-6"
-      >
-        {error && (
-          <p className="rounded-md bg-error/10 px-3 py-2 text-sm text-error">
-            {error}
-          </p>
-        )}
+      {/* overflow-y-auto lives on this full-width outer div, not the
+          centered column below it, so the scrollbar sits at the pane's
+          true right edge instead of floating at the narrower column's
+          edge in the middle of the screen. */}
+      <div ref={historyRef} onScroll={handleHistoryScroll} className="flex-1 overflow-y-auto">
+        <div className="mx-auto flex w-full max-w-3xl flex-col gap-4 px-4 py-6">
+          {error && (
+            <p className="rounded-md bg-error/10 px-3 py-2 text-sm text-error">
+              {error}
+            </p>
+          )}
 
-        {loading ? (
-          <p className="text-sm text-muted">Loading project…</p>
-        ) : turns.length === 0 ? (
-          <p className="text-sm italic text-muted">
-            {mode === 'new'
-              ? 'Describe what you want to build below to get started.'
-              : 'No history yet.'}
-          </p>
-        ) : (
-          turns.map((turn) => (
-            <ChatTurn key={turn.turnId} turn={turn} onRetry={() => handleRetry(turn)} />
-          ))
-        )}
-        {queue.map((queued, i) => (
-          <div key={i} className="flex max-w-[85%] flex-col items-end gap-1 self-end">
-            <div className="rounded-lg bg-chat-bubble/50 px-4 py-2 text-sm text-on-primary shadow-sm">
-              {queued.prompt}
+          {loading ? (
+            <p className="text-sm text-muted">Loading project…</p>
+          ) : turns.length === 0 ? (
+            <p className="text-sm italic text-muted">
+              {mode === 'new'
+                ? 'Describe what you want to build below to get started.'
+                : 'No history yet.'}
+            </p>
+          ) : (
+            turns.map((turn) => (
+              <ChatTurn key={turn.turnId} turn={turn} onRetry={() => handleRetry(turn)} />
+            ))
+          )}
+          {queue.map((queued, i) => (
+            <div key={i} className="flex max-w-[85%] flex-col items-end gap-1 self-end">
+              <div className="rounded-lg bg-chat-bubble/50 px-4 py-2 text-sm text-on-primary shadow-sm">
+                {queued.prompt}
+              </div>
+              <span className="rounded-full bg-surface-soft px-2 py-0.5 text-[11px] text-muted">
+                Queued
+              </span>
             </div>
-            <span className="rounded-full bg-surface-soft px-2 py-0.5 text-[11px] text-muted">
-              Queued
-            </span>
-          </div>
-        ))}
+          ))}
+        </div>
       </div>
 
-      <div className="mx-auto w-full max-w-3xl flex-shrink-0 px-4 pb-6">
+      <div className="mx-auto w-full max-w-3xl flex-shrink-0 px-4 pb-4 sm:pb-6">
         <PromptForm
           mode={mode}
           name={name}

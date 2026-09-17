@@ -8,9 +8,14 @@ interface SidebarProps {
   onToggleCollapsed: () => void;
   /** Bump to force a re-fetch, e.g. right after a project is created or renamed. */
   refreshKey: number;
+  /** Called whenever a link/button here causes navigation - App.tsx uses
+   *  this to close the mobile off-canvas drawer (irrelevant, and unused,
+   *  on desktop where the sidebar isn't an overlay). Optional since this
+   *  component has no mobile-drawer concept of its own. */
+  onNavigate?: () => void;
 }
 
-export function Sidebar({ collapsed, onToggleCollapsed, refreshKey }: SidebarProps) {
+export function Sidebar({ collapsed, onToggleCollapsed, refreshKey, onNavigate }: SidebarProps) {
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const navigate = useNavigate();
@@ -42,6 +47,7 @@ export function Sidebar({ collapsed, onToggleCollapsed, refreshKey }: SidebarPro
       setProjects((prev) => prev.filter((p) => p.id !== project.id));
       if (location.pathname.startsWith(`/projects/${project.id}`)) {
         navigate('/');
+        onNavigate?.();
       }
     } catch {
       // Best-effort - the list just won't reflect it; not the primary
@@ -94,7 +100,10 @@ export function Sidebar({ collapsed, onToggleCollapsed, refreshKey }: SidebarPro
 
       <button
         type="button"
-        onClick={() => navigate('/')}
+        onClick={() => {
+          navigate('/');
+          onNavigate?.();
+        }}
         className="mx-3 mb-3 flex items-center justify-center gap-1.5 rounded-sm bg-gradient-to-br from-primary to-accent-warm px-3 py-2 text-sm font-medium text-on-primary shadow-button-inset transition hover:opacity-80"
       >
         <span className="text-base leading-none">+</span> New project
@@ -112,6 +121,7 @@ export function Sidebar({ collapsed, onToggleCollapsed, refreshKey }: SidebarPro
                 <NavLink
                   to={`/projects/${project.id}`}
                   title={project.name}
+                  onClick={onNavigate}
                   className={({ isActive }) =>
                     `block flex-1 truncate rounded-md px-3 py-2 text-sm transition ${
                       isActive

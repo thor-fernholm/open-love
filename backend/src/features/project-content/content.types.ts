@@ -1,6 +1,7 @@
 export type ContentFieldType =
   | 'text'
   | 'textarea'
+  | 'markdown'
   | 'image'
   | 'video'
   | 'link'

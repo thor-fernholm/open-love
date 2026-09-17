@@ -3,6 +3,7 @@ const API_BASE = 'http://localhost:3000';
 export type ContentFieldType =
   | 'text'
   | 'textarea'
+  | 'markdown'
   | 'image'
   | 'video'
   | 'link'

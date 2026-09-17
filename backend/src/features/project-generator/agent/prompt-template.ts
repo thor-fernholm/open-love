@@ -30,17 +30,28 @@ import type { SiteType, TurnAttachment } from '../project.types';
  * system prompt for a tool-use loop). Ollama only ever sees 'static' - see
  * ProjectGeneratorService.resolveSelection's provider/siteType guard.
  */
+/** Shared by both site types - a structural/technical requirement, not a
+ *  stylistic one, so it lives here rather than in any of the designs/*.md
+ *  files (which stay purely about palette/type/spacing/shadow - see
+ *  design-guide.ts). Every generated site should work on a phone, not just
+ *  the wide preview window it's built and checked in. */
+const RESPONSIVE_RULE = `Responsive: the site must work well from a ~375px-wide phone screen up through a wide desktop window, not just look right at whatever width you happen to preview it at. Use relative/flexible sizing (percentages, flexbox/grid, max-width) rather than fixed pixel widths that could overflow a narrow screen; let multi-column layouts stack to one column and let navigation collapse or simplify below a reasonable breakpoint; size tap targets (buttons, links) generously enough for a finger, not just a mouse cursor; make sure images and any embedded media scale down with their container instead of overflowing it.`;
+
 const STATIC_INSTRUCTIONS_HEAD = `You are building a small website in this directory, based on the request below. Build whatever the request actually calls for - a landing page, a tool, a game, a blog, a business site, an invite page, anything - don't assume it's a portfolio or any other fixed shape.
 
 Tech constraint (always applies): plain static HTML/CSS/JS only - no build step, no bundler, no framework, no server-side code. The site must work by opening index.html directly, and must also work when served from a nested URL path, so use only relative asset/link paths (e.g. "styles.css", not "/styles.css").
 
-${imagesRule({ mentionContentEditor: true })}`;
+${imagesRule({ mentionContentEditor: true })}
+
+${RESPONSIVE_RULE}`;
 
 const DYNAMIC_INSTRUCTIONS_HEAD = `You are building a small full-stack app in this directory, based on the request below. This directory already contains a working Next.js + Prisma + SQLite starter - call list_files (and read_file the key files: app/page.tsx, prisma/schema.prisma, app/api/items/route.ts, lib/prisma.ts) before you start, so you extend what's there rather than rebuilding it or guessing at its shape.
 
 Follow the stack guide below for conventions (where pages/routes/data access go, the Prisma workflow, what NOT to add). Build whatever the request actually calls for - don't assume it's the starter's own example "Item" list unless the request is actually that.
 
-${imagesRule({ mentionContentEditor: false })}`;
+${imagesRule({ mentionContentEditor: false })}
+
+${RESPONSIVE_RULE}`;
 
 /** Shared by both site types - this is what makes the chat feel like a
  *  conversation instead of a one-shot generator: permission to just
@@ -67,14 +78,18 @@ When it is needed:
       { "key": "image", "label": "Photo", "type": "image" },
       { "key": "link", "label": "Link", "type": "link" }
     ]},
+    { "name": "posts", "label": "Posts", "type": "list", "fields": [
+      { "key": "title", "label": "Title", "type": "text" },
+      { "key": "body", "label": "Body", "type": "markdown" }
+    ]},
     { "name": "site", "label": "Site", "type": "singleton", "fields": [
       { "key": "title", "label": "Title", "type": "text" }
     ]}
   ]
   - Collection "type" is "list" (an array of records) or "singleton" (one object, e.g. site-wide settings).
-  - Field "type" is one of: text, textarea, image, video, link, date. "image" and "video" values are always URLs (an image URL, or a YouTube link) - never the media itself. Fill an "image" field's initial value with a Picsum URL per the Images rule above, not an empty string - the upload feature overwrites it with a real photo later.
+  - Field "type" is one of: text, textarea, markdown, image, video, link, date. "image" and "video" values are always URLs (an image URL, or a YouTube link) - never the media itself. Fill an "image" field's initial value with a Picsum URL per the Images rule above, not an empty string - the upload feature overwrites it with a real photo later. Use "markdown" (not "textarea") for longer rich body content where headings/bold/links actually matter (a blog post body, an About section) - the editor gives the user real formatting buttons for it; plain "textarea" is still right for short plain text (a one-line description, a summary) that shouldn't need formatting.
 - Create one content/<name>.json per manifest entry: an array of records for a "list" collection, or a single object for a "singleton" collection, matching that entry's fields, filled in with real content per the request below.
-- Your site's own JS must fetch() these files at runtime (relative paths, e.g. fetch('content/products.json')) and render them into the page - don't also hardcode the same content directly into the HTML.`;
+- Your site's own JS must fetch() these files at runtime (relative paths, e.g. fetch('content/products.json')) and render them into the page - don't also hardcode the same content directly into the HTML. A "markdown" field's stored value is raw markdown text, not HTML - render it by loading a parser from a CDN script tag, e.g. <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>, then setting an element's innerHTML to marked.parse(value) at render time. Don't insert the raw markdown text as-is, and don't hand-roll your own markdown parser.`;
 
 function imagesRule({ mentionContentEditor }: { mentionContentEditor: boolean }): string {
   const replacementHint = mentionContentEditor

@@ -73,6 +73,17 @@ describe('buildConventions', () => {
     expect(buildConventions([], 'static', [])).toContain('content editor');
     expect(buildConventions([], 'dynamic', [])).not.toContain('content editor');
   });
+
+  it('includes the responsive-design rule for both site types', () => {
+    expect(buildConventions([], 'static', [])).toContain('Responsive:');
+    expect(buildConventions([], 'dynamic', [])).toContain('Responsive:');
+  });
+
+  it('documents the markdown field type and its CDN rendering rule for static projects', () => {
+    const conventions = buildConventions([], 'static', []);
+    expect(conventions).toContain('markdown');
+    expect(conventions).toContain('marked.parse');
+  });
 });
 
 describe('buildClaudePrompt', () => {

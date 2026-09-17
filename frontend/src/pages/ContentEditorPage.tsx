@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { FileButton } from '../components/FileButton';
+import { MarkdownField } from '../components/MarkdownField';
 import {
   getContent,
   resolveContentAssetUrl,
@@ -56,6 +57,10 @@ function FieldInput({ field, value, onChange, projectId }: FieldInputProps) {
         className={inputClass}
       />
     );
+  }
+
+  if (field.type === 'markdown') {
+    return <MarkdownField value={value} onChange={onChange} />;
   }
 
   if (field.type === 'date') {
@@ -291,7 +296,7 @@ export function ContentEditorPage() {
 
   return (
     <div className="flex h-full flex-col">
-      <header className="flex items-center justify-between gap-4 border-b border-hairline px-6 py-4">
+      <header className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-hairline px-4 py-4 sm:px-6">
         <div className="flex min-w-0 flex-col gap-1">
           <h1 className="truncate font-display text-2xl tracking-tight text-ink">
             Edit content — {projectName ?? 'Loading…'}
@@ -305,7 +310,7 @@ export function ContentEditorPage() {
         </div>
       </header>
 
-      <div className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-6 overflow-y-auto px-6 py-6">
+      <div className="flex w-full flex-1 flex-col gap-6 overflow-y-auto px-4 py-6 sm:px-6">
         {loadError && (
           <p className="rounded-md bg-error/10 px-3 py-2 text-sm text-error">
             {loadError}
@@ -315,7 +320,7 @@ export function ContentEditorPage() {
         {loading ? (
           <p className="text-sm text-muted">Loading content…</p>
         ) : content && content.collections.length > 0 ? (
-          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-3">
             {content.collections.map((schema) => (
               <CollectionEditor
                 key={schema.name}
